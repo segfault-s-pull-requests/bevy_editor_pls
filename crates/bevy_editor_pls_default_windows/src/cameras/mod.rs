@@ -10,7 +10,8 @@ use bevy::window::WindowRef;
 use bevy::{prelude::*, render::primitives::Aabb};
 use bevy_editor_pls_core::{
     editor_window::{EditorWindow, EditorWindowContext},
-    Editor, EditorEvent,
+    Editor,
+    EditorEvent,
 };
 use bevy_inspector_egui::egui;
 use transform_gizmo_bevy::GizmoCamera;
@@ -564,7 +565,10 @@ fn initial_camera_setup(
 
 fn set_main_pass_viewport(
     editor: Res<Editor>,
-    window: Query<(&bevy_inspector_egui::bevy_egui::EguiSettings, &Window)>,
+    window: Query<(
+        &bevy_inspector_egui::bevy_egui::EguiContextSettings,
+        &Window,
+    )>,
     mut cameras: Query<&mut Camera, With<EditorCamera>>,
 ) {
     if !editor.is_changed() {

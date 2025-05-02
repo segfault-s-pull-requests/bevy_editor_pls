@@ -4,6 +4,7 @@ use bevy::ecs::entity::Entities;
 use bevy::pbr::wireframe::Wireframe;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistry;
+use bevy::render::sync_world::RenderEntity;
 use bevy::render::{Extract, RenderApp};
 use bevy_inspector_egui::bevy_inspector::guess_entity_name;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
@@ -108,7 +109,11 @@ fn clear_removed_entites(mut editor: ResMut<Editor>, entities: &Entities) {
     }
 }*/
 
-fn extract_wireframe_for_selected(editor: Extract<Res<Editor>>, mut commands: Commands) {
+fn extract_wireframe_for_selected(
+    editor: Extract<Res<Editor>>,
+    mut commands: Commands,
+    query: Extract<Query<RenderEntity>>,
+) {
     let wireframe_for_selected = editor
         .window_state::<DebugSettingsWindow>()
         .map_or(false, |settings| settings.highlight_selected);
@@ -116,8 +121,10 @@ fn extract_wireframe_for_selected(editor: Extract<Res<Editor>>, mut commands: Co
     if wireframe_for_selected {
         let selected = &editor.window_state::<HierarchyWindow>().unwrap().selected;
         for selected in selected.iter() {
-            if let Some(mut entity) = commands.get_entity(selected) {
-                entity.insert(Wireframe);
+            if let Ok(r_id) = query.get(selected) {
+                if let Some(mut entity) = commands.get_entity(r_id) {
+                    entity.insert(Wireframe);
+                }
             }
         }
     }
