@@ -16,7 +16,8 @@ pub(crate) enum CameraSystem {
     EditorCam3dFree,
 }
 
-#[derive(Component)]
+#[derive(Component, Clone, Reflect)]
+#[reflect(Component)]
 pub struct FlycamControls {
     pub yaw: f32,
     pub pitch: f32,
@@ -49,6 +50,10 @@ impl Default for FlycamControls {
             key_boost: KeyCode::ShiftLeft,
         }
     }
+}
+
+impl FlycamControls {
+    pub const NAME: &'static str = "3d Flycam";
 }
 
 fn camera_movement(

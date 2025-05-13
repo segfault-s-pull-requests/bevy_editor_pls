@@ -4,7 +4,10 @@ use bevy::{
     render::view::RenderLayers,
 };
 
-use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
+use bevy_editor_pls_core::{
+    editor_window::{EditorWindow, EditorWindowContext},
+    AddEditorWindow,
+};
 use bevy_inspector_egui::egui;
 use transform_gizmo_bevy::GizmoTarget;
 use transform_gizmo_bevy::{EnumSet, GizmoMode};
@@ -14,6 +17,7 @@ use crate::{
     hierarchy::HierarchyWindow,
 };
 
+#[derive(Debug, Clone, Component)]
 pub struct GizmoState {
     /// If [false], doesn't show any gizmos
     pub camera_gizmo_active: bool,
@@ -30,94 +34,107 @@ impl Default for GizmoState {
     }
 }
 
-pub struct GizmoWindow;
+#[derive(Debug, Clone, Copy, Component, Default)]
+pub struct GizmosWindow;
 
-impl EditorWindow for GizmoWindow {
-    type State = GizmoState;
+impl EditorWindow for GizmosWindow {
+    fn name(&self) -> &'static str {
+        "Gizmos"
+    }
 
-    const NAME: &'static str = "Gizmos";
-
-    fn ui(_world: &mut World, _cx: EditorWindowContext, ui: &mut egui::Ui) {
+    fn ui(&self, _world: &mut World, _cx: EditorWindowContext, ui: &mut egui::Ui) {
         ui.label("Gizmos can currently not be configured");
         // could definitely change some settings here in the future
     }
 
-    /// Called every frame (hopefully), could this invariant (namely being called every frame) be documented,
-    /// ideally in the [EditorWindow] trait?
-    fn viewport_toolbar_ui(world: &mut World, cx: EditorWindowContext, _ui: &mut egui::Ui) {
-        let gizmo_state = cx.state::<GizmoWindow>().unwrap();
+    // TODO: gizmos were always broken, I should add them back in at some point but at the moment I don't care.
+    // Called every frame (hopefully), could this invariant (namely being called every frame) be documented,
+    // ideally in the [EditorWindow] trait?
+    // fn viewport_toolbar_ui(&self, world: &mut World, cx: EditorWindowContext, _ui: &mut egui::Ui) {
+    //     let gizmo_state = cx.state::<GizmoWindow>().unwrap();
 
-        // syncs the [GizmoOptions] resource with the current state of the gizmo window
-        let mut gizmo_options = world.resource_mut::<transform_gizmo_bevy::GizmoOptions>();
-        gizmo_options.gizmo_modes = gizmo_state.gizmo_modes;
+    //     // syncs the [GizmoOptions] resource with the current state of the gizmo window
+    //     let mut gizmo_options = world.resource_mut::<transform_gizmo_bevy::GizmoOptions>();
+    //     gizmo_options.gizmo_modes = gizmo_state.gizmo_modes;
 
-        if gizmo_state.camera_gizmo_active {
-            /// Before [hydrate_gizmos] and [deconstruct_gizmos] are run, this system resets the state of all entities that have a [EntityShouldShowGizmo] component.
-            /// Then, according to selection logic some entities are marked as focussed, and [hydrate_gizmos] and [deconstruct_gizmos] is run to sync the gizmo state with the selection state.
-            fn reset_gizmos_selected_state(
-                mut commands: Commands,
-                entities: Query<Entity, With<EntityShouldShowGizmo>>,
-            ) {
-                for entity in entities.iter() {
-                    commands.entity(entity).remove::<EntityShouldShowGizmo>();
-                }
-            }
+    //     if gizmo_state.camera_gizmo_active {
+    //         /// Before [hydrate_gizmos] and [deconstruct_gizmos] are run, this system resets the state of all entities that have a [EntityShouldShowGizmo] component.
+    //         /// Then, according to selection logic some entities are marked as focussed, and [hydrate_gizmos] and [deconstruct_gizmos] is run to sync the gizmo state with the selection state.
+    //         fn reset_gizmos_selected_state(
+    //             mut commands: Commands,
+    //             entities: Query<Entity, With<EntityShouldShowGizmo>>,
+    //         ) {
+    //             for entity in entities.iter() {
+    //                 commands.entity(entity).remove::<EntityShouldShowGizmo>();
+    //             }
+    //         }
 
-            /// Takes all entities marked with [EntityShouldShowGizmo] and adds the [GizmoTarget] component to them.
-            fn hydrate_gizmos(
-                mut commands: Commands,
-                entities: Query<Entity, (With<EntityShouldShowGizmo>, Without<GizmoTarget>)>,
-            ) {
-                for entity in entities.iter() {
-                    if let Some(mut entity) = commands.get_entity(entity) {
-                        trace!(
-                            "Hydrating a gizmo on entity {:?} because it is selected",
-                            entity.id()
-                        );
-                        // implicitly assumes it is the only gizmo target in the world,
-                        // otherwise setting [GizmoTarget].is_focussed may be necessary
-                        entity.insert(GizmoTarget::default());
-                    }
-                }
-            }
+    //         /// Takes all entities marked with [EntityShouldShowGizmo] and adds the [GizmoTarget] component to them.
+    //         fn hydrate_gizmos(
+    //             mut commands: Commands,
+    //             entities: Query<Entity, (With<EntityShouldShowGizmo>, Without<GizmoTarget>)>,
+    //         ) {
+    //             for entity in entities.iter() {
+    //                 if let Some(mut entity) = commands.get_entity(entity) {
+    //                     trace!(
+    //                         "Hydrating a gizmo on entity {:?} because it is selected",
+    //                         entity.id()
+    //                     );
+    //                     // implicitly assumes it is the only gizmo target in the world,
+    //                     // otherwise setting [GizmoTarget].is_focussed may be necessary
+    //                     entity.insert(GizmoTarget::default());
+    //                 }
+    //             }
+    //         }
 
-            /// Takes all entities that should have their [GizmoTarget] removed because they are no longer selected.
-            fn deconstruct_gizmos(
-                mut commands: Commands,
-                entities: Query<Entity, (With<GizmoTarget>, Without<EntityShouldShowGizmo>)>,
-            ) {
-                for entity in entities.iter() {
-                    if let Some(mut entity) = commands.get_entity(entity) {
-                        entity.remove::<GizmoTarget>();
-                        debug!(
-                            "Removing GizmoTarget from entity {:?} because it has lost focus",
-                            entity.id()
-                        );
-                    }
-                }
-            }
+    //         /// Takes all entities that should have their [GizmoTarget] removed because they are no longer selected.
+    //         fn deconstruct_gizmos(
+    //             mut commands: Commands,
+    //             entities: Query<Entity, (With<GizmoTarget>, Without<EntityShouldShowGizmo>)>,
+    //         ) {
+    //             for entity in entities.iter() {
+    //                 if let Some(mut entity) = commands.get_entity(entity) {
+    //                     entity.remove::<GizmoTarget>();
+    //                     debug!(
+    //                         "Removing GizmoTarget from entity {:?} because it has lost focus",
+    //                         entity.id()
+    //                     );
+    //                 }
+    //             }
+    //         }
 
-            if let Some(hierarchy_state) = cx.state::<HierarchyWindow>() {
-                // here should assign the `EntityShouldShowGizmo` component, which is later synced
-                // with the actual gizmo ui system
+    //         if let Some(hierarchy_state) = cx.state::<HierarchyWindow>() {
+    //             // here should assign the `EntityShouldShowGizmo` component, which is later synced
+    //             // with the actual gizmo ui system
 
-                // todo: not ignore errors
-                world.run_system_once(reset_gizmos_selected_state).ok();
+    //             // todo: not ignore errors
+    //             world.run_system_once(reset_gizmos_selected_state).ok();
 
-                let selected_entities = hierarchy_state.selected.iter();
-                for entity in selected_entities {
-                    if let Ok(mut entity) = world.get_entity_mut(entity) {
-                        entity.insert(EntityShouldShowGizmo);
-                    }
-                }
+    //             let selected_entities = hierarchy_state.selected.iter();
+    //             for entity in selected_entities {
+    //                 if let Ok(mut entity) = world.get_entity_mut(entity) {
+    //                     entity.insert(EntityShouldShowGizmo);
+    //                 }
+    //             }
 
-                world.run_system_once(hydrate_gizmos).ok();
-                world.run_system_once(deconstruct_gizmos).ok();
-            }
+    //             world.run_system_once(hydrate_gizmos).ok();
+    //             world.run_system_once(deconstruct_gizmos).ok();
+    //         }
+    //     }
+    // }
+}
+
+impl Plugin for GizmosWindow {
+    fn build(&self, app: &mut App) {
+        app.add_editor_window::<Self>();
+
+        if !app.is_plugin_added::<bevy::pbr::wireframe::WireframePlugin>() {
+            app.add_plugins(bevy::pbr::wireframe::WireframePlugin);
         }
-    }
+        if !app.is_plugin_added::<transform_gizmo_bevy::TransformGizmoPlugin>() {
+            app.add_plugins(transform_gizmo_bevy::TransformGizmoPlugin);
+        }
 
-    fn app_setup(app: &mut App) {
         let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
         let material_light = materials.add(StandardMaterial {
             base_color: Color::srgba_u8(222, 208, 103, 255),
@@ -166,6 +183,8 @@ struct HasGizmoMarker;
 
 /// When on an entity, this entity should be controllable using some sort of user gizmo.
 /// Currently uses [transform_gizmo_bevy], and puts the [GizmoTarget] on the entity.
+/// NOTE: this is a much more reasonable place to implement gizmos then the EditorWindow impl
+/// TODO: have gizmos as children of a global gizmo entity, which syncs to global transform and will eventually have the GizmoOf relation
 #[derive(Component)]
 struct EntityShouldShowGizmo;
 

@@ -17,7 +17,8 @@ impl Plugin for PanOrbitCameraPlugin {
 }
 
 /// Tags an entity as capable of panning and orbiting.
-#[derive(Component)]
+#[derive(Component, Clone, Reflect)]
+#[reflect(Component)]
 pub struct PanOrbitCamera {
     pub enabled: bool,
 
@@ -28,6 +29,10 @@ pub struct PanOrbitCamera {
 
     pub orbit_button: MouseButton,
     pub pan_button: MouseButton,
+}
+
+impl PanOrbitCamera {
+    pub const NAME: &'static str = "3d Pan Orbit";
 }
 
 impl Default for PanOrbitCamera {

@@ -211,16 +211,16 @@ pub fn editor_controls_system(
         });
     }
 
-    if controls.just_pressed(
-        Action::PauseUnpauseTime,
-        &keyboard_input,
-        &mouse_input,
-        &editor,
-    ) {
-        if let Some(default_window) = editor.window_state_mut::<bevy_editor_pls_default_windows::debug_settings::DebugSettingsWindow>() {
-            default_window.pause_time = !default_window.pause_time;
-        }
-    }
+    // if controls.just_pressed(
+    //     Action::PauseUnpauseTime,
+    //     &keyboard_input,
+    //     &mouse_input,
+    //     &editor,
+    // ) {
+    //     if let Some(default_window) = editor.window_state_mut::<bevy_editor_pls_default_windows::debug_settings::DebugSettingsWindow>() {
+    //         default_window.pause_time = !default_window.pause_time;
+    //     }
+    // }
 
     if controls.just_pressed(
         Action::FocusSelected,
@@ -231,42 +231,42 @@ pub fn editor_controls_system(
         editor_events.send(EditorEvent::FocusSelected);
     }
 
-    #[cfg(feature = "default_windows")]
-    {
-        if controls.just_pressed(
-            Action::SetGizmoModeTranslate,
-            &keyboard_input,
-            &mouse_input,
-            &editor,
-        ) {
-            editor
-                .window_state_mut::<bevy_editor_pls_default_windows::gizmos::GizmoWindow>()
-                .unwrap()
-                .gizmo_modes = transform_gizmo_bevy::GizmoMode::all_translate();
-        }
-        if controls.just_pressed(
-            Action::SetGizmoModeRotate,
-            &keyboard_input,
-            &mouse_input,
-            &editor,
-        ) {
-            editor
-                .window_state_mut::<bevy_editor_pls_default_windows::gizmos::GizmoWindow>()
-                .unwrap()
-                .gizmo_modes = transform_gizmo_bevy::GizmoMode::all_rotate();
-        }
-        if controls.just_pressed(
-            Action::SetGizmoModeScale,
-            &keyboard_input,
-            &mouse_input,
-            &editor,
-        ) {
-            editor
-                .window_state_mut::<bevy_editor_pls_default_windows::gizmos::GizmoWindow>()
-                .unwrap()
-                .gizmo_modes = transform_gizmo_bevy::GizmoMode::all_scale();
-        }
-    }
+    // #[cfg(feature = "default_windows")]
+    // {
+    //     if controls.just_pressed(
+    //         Action::SetGizmoModeTranslate,
+    //         &keyboard_input,
+    //         &mouse_input,
+    //         &editor,
+    //     ) {
+    //         editor
+    //             .window_state_mut::<bevy_editor_pls_default_windows::gizmos::GizmosWindow>()
+    //             .unwrap()
+    //             .gizmo_modes = transform_gizmo_bevy::GizmoMode::all_translate();
+    //     }
+    //     if controls.just_pressed(
+    //         Action::SetGizmoModeRotate,
+    //         &keyboard_input,
+    //         &mouse_input,
+    //         &editor,
+    //     ) {
+    //         editor
+    //             .window_state_mut::<bevy_editor_pls_default_windows::gizmos::GizmosWindow>()
+    //             .unwrap()
+    //             .gizmo_modes = transform_gizmo_bevy::GizmoMode::all_rotate();
+    //     }
+    //     if controls.just_pressed(
+    //         Action::SetGizmoModeScale,
+    //         &keyboard_input,
+    //         &mouse_input,
+    //         &editor,
+    //     ) {
+    //         editor
+    //             .window_state_mut::<bevy_editor_pls_default_windows::gizmos::GizmosWindow>()
+    //             .unwrap()
+    //             .gizmo_modes = transform_gizmo_bevy::GizmoMode::all_scale();
+    //     }
+    // }
 }
 
 impl EditorControls {
@@ -376,13 +376,15 @@ impl std::fmt::Display for Binding {
     }
 }
 
+#[derive(Clone, Component, Default)]
 pub struct ControlsWindow;
 
 impl EditorWindow for ControlsWindow {
-    type State = ();
-    const NAME: &'static str = "Controls";
+    // type State = ();
+    // const NAME: &'static str = "Controls";
 
     fn ui(
+        &self,
         world: &mut World,
         _: bevy_editor_pls_core::editor_window::EditorWindowContext,
         ui: &mut egui::Ui,

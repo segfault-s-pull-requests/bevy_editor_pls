@@ -88,10 +88,15 @@ fn camera_movement(
     *last_pos = Some(current_pos);
 }
 
-#[derive(Component)]
+#[derive(Component, Clone, Reflect)]
+#[reflect(Component)]
 pub struct PanCamControls {
     pub enabled: bool,
     pub grab_buttons: Vec<MouseButton>,
+}
+
+impl PanCamControls {
+    pub const NAME: &'static str = "2d Pan Zoom";
 }
 
 impl Default for PanCamControls {

@@ -12,5 +12,8 @@ bevy = { version = "0.15", default-features = false, features = [
     "bevy_window",
 ] }
 bevy-inspector-egui.workspace = true
+bevy-trait-query.workspace = true
+dyn-clone.workspace = true
 indexmap = "2"
 egui_dock.workspace = true
+polonius-the-crab = "*"

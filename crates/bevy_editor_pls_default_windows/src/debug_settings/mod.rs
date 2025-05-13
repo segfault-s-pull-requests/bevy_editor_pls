@@ -1,25 +1,29 @@
 pub mod debugdump;
 
+use std::sync::Arc;
+
 use bevy::{
     pbr::wireframe::WireframeConfig,
     prelude::*,
     reflect::TypeRegistry,
     render::{render_resource::WgpuFeatures, renderer::RenderAdapter},
 };
-use bevy_editor_pls_core::editor_window::EditorWindow;
+use bevy_editor_pls_core::{editor_window::EditorWindow, AddEditorWindow};
 use bevy_inspector_egui::{
     egui::{self, Grid},
     reflect_inspector::ui_for_value,
 };
 
-pub struct DebugSettingsWindowState {
+#[derive(Debug, Clone, Resource)]
+pub struct DebugSettings {
     pub pause_time: bool,
     pub wireframes: bool,
     pub highlight_selected: bool,
 
-    open_debugdump_status: Option<DebugdumpError>,
+    open_debugdump_status: Option<Arc<DebugdumpError>>,
 }
 
+#[derive(Debug)]
 enum DebugdumpError {
     DotNotFound,
     ScheduleNotFound,
@@ -27,7 +31,7 @@ enum DebugdumpError {
     IO(std::io::Error),
 }
 
-impl Default for DebugSettingsWindowState {
+impl Default for DebugSettings {
     fn default() -> Self {
         Self {
             pause_time: false,
@@ -39,31 +43,40 @@ impl Default for DebugSettingsWindowState {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, Component)]
 pub struct DebugSettingsWindow;
 impl EditorWindow for DebugSettingsWindow {
-    type State = DebugSettingsWindowState;
-    const NAME: &'static str = "Debug settings";
+    fn name(&self) -> &'static str {
+        "Debug settings"
+    }
 
     fn ui(
+        &self,
         world: &mut bevy::prelude::World,
-        mut cx: bevy_editor_pls_core::editor_window::EditorWindowContext,
+        cx: bevy_editor_pls_core::editor_window::EditorWindowContext,
         ui: &mut egui::Ui,
     ) {
         let type_registry = world.resource::<AppTypeRegistry>().clone();
         let type_registry = type_registry.read();
 
-        let state = cx.state_mut::<DebugSettingsWindow>().unwrap();
-        debug_ui(world, state, ui, &type_registry);
+        let mut state = world.resource_scope(|world, mut state: Mut<DebugSettings>| {
+            debug_ui(world, state.as_mut(), ui, &type_registry);
+        });
     }
+}
 
-    fn app_finish(app: &mut App) {
+impl Plugin for DebugSettingsWindow {
+    fn build(&self, app: &mut App) {
+        // app.init_resource::<PreviouslyActiveCameras>();
+        app.add_editor_window::<DebugSettingsWindow>();
+        app.init_resource::<DebugSettings>();
         debugdump::setup(app);
     }
 }
 
 fn debug_ui(
     world: &mut World,
-    state: &mut DebugSettingsWindowState,
+    state: &mut DebugSettings,
     ui: &mut egui::Ui,
     type_registry: &TypeRegistry,
 ) {
@@ -95,7 +108,7 @@ pub fn horizontal_if<R>(
 
 fn debug_ui_options(
     world: &mut World,
-    state: &mut DebugSettingsWindowState,
+    state: &mut DebugSettings,
     ui: &mut egui::Ui,
     type_registry: &TypeRegistry,
 ) {
@@ -116,11 +129,7 @@ fn debug_ui_options(
 
         let mut speed = time.relative_speed_f64();
         if ui
-            .add(
-                egui::DragValue::new(&mut speed)
-                    .range(0..=20)
-                    .speed(0.1),
-            )
+            .add(egui::DragValue::new(&mut speed).range(0..=20).speed(0.1))
             .changed()
         {
             time.set_relative_speed_f64(speed);
@@ -162,7 +171,7 @@ fn debug_ui_options(
     });
 }
 
-fn debug_ui_debugdump(world: &mut World, state: &mut DebugSettingsWindowState, ui: &mut egui::Ui) {
+fn debug_ui_debugdump(world: &mut World, state: &mut DebugSettings, ui: &mut egui::Ui) {
     let open_dot = |dot: &Option<String>, path: &str| -> Result<(), DebugdumpError> {
         let dot = dot.as_ref().ok_or(DebugdumpError::ScheduleNotFound)?;
 
@@ -184,13 +193,13 @@ fn debug_ui_debugdump(world: &mut World, state: &mut DebugSettingsWindowState, u
         if ui.button("Open `Update` schedule").clicked() {
             let schedule_graph = world.get_resource::<debugdump::DotGraphs>().unwrap();
             if let Err(e) = open_dot(&schedule_graph.update_schedule, "schedule_main") {
-                state.open_debugdump_status = Some(e);
+                state.open_debugdump_status = Some(e.into());
             }
         }
         if ui.button("Open `FixedUpdate` schedule").clicked() {
             let schedule_graph = world.get_resource::<debugdump::DotGraphs>().unwrap();
             if let Err(e) = open_dot(&schedule_graph.fixed_update_schedule, "schedule_fixed") {
-                state.open_debugdump_status = Some(e);
+                state.open_debugdump_status = Some(e.into());
             }
         }
         if ui.button("Open render extract schedule").clicked() {
@@ -199,25 +208,25 @@ fn debug_ui_debugdump(world: &mut World, state: &mut DebugSettingsWindowState, u
                 &schedule_graph.render_extract_schedule,
                 "schedule_render_extract",
             ) {
-                state.open_debugdump_status = Some(e);
+                state.open_debugdump_status = Some(e.into());
             }
         }
         if ui.button("Open render main schedule").clicked() {
             let schedule_graph = world.get_resource::<debugdump::DotGraphs>().unwrap();
             if let Err(e) = open_dot(&schedule_graph.render_main_schedule, "schedule_render_main") {
-                state.open_debugdump_status = Some(e);
+                state.open_debugdump_status = Some(e.into());
             }
         }
         if ui.button("Open render graph").clicked() {
             let schedule_graph = world.get_resource::<debugdump::DotGraphs>().unwrap();
             if let Err(e) = open_dot(&schedule_graph.render_graph, "render_graph") {
-                state.open_debugdump_status = Some(e);
+                state.open_debugdump_status = Some(e.into());
             }
         }
     });
 
     if let Some(error) = &state.open_debugdump_status {
-        let msg = match error {
+        let msg = match error.as_ref() {
             DebugdumpError::DotNotFound => {
                 ui.vertical(|ui| {
                     ui.label("Could not generate svg.");

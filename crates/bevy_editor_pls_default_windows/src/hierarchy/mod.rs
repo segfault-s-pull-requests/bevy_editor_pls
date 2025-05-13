@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::reflect::TypeRegistry;
 use bevy::render::sync_world::RenderEntity;
 use bevy::render::{Extract, RenderApp};
+use bevy_editor_pls_core::{editor, AddEditorWindow};
 use bevy_inspector_egui::bevy_inspector::guess_entity_name;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
 use bevy_inspector_egui::egui::text::CCursorRange;
@@ -18,48 +19,44 @@ use bevy_editor_pls_core::{
 // use bevy_mod_picking::backends::egui::EguiPointer;
 // use bevy_mod_picking::prelude::{IsPointerEvent, PointerClick, PointerButton};
 
-use crate::add::{add_ui, AddWindow, AddWindowState};
-use crate::debug_settings::DebugSettingsWindow;
-use crate::inspector::{InspectorSelection, InspectorWindow};
+// use crate::add::{add_ui, AddWindow, AddWindowState};
+use crate::debug_settings::{DebugSettings, DebugSettingsWindow};
+use crate::inspector::{InspectorSelection, InspectorState, InspectorWindow};
 
 #[derive(Component)]
 pub struct HideInEditor;
 
+#[derive(Debug, Copy, Clone, Component, Default)]
 pub struct HierarchyWindow;
 impl EditorWindow for HierarchyWindow {
-    type State = HierarchyState;
-    const NAME: &'static str = "Hierarchy";
-
-    fn ui(world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
-        let (hierarchy_state, inspector_state, add_state) =
-            match cx.state_mut_triplet::<HierarchyWindow, InspectorWindow, AddWindow>() {
-                Some((a, b, c)) => (a, b, Some(c)),
-                None => {
-                    let (a, b) = cx
-                        .state_mut_pair::<HierarchyWindow, InspectorWindow>()
-                        .unwrap();
-                    (a, b, None)
-                }
-            };
+    fn ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
+        let mut hierarchy_state = cx.get::<HierarchyState>(world).unwrap().clone();
 
         ScrollArea::vertical().show(ui, |ui| {
             let type_registry = world.resource::<AppTypeRegistry>().clone();
             let type_registry = type_registry.read();
             let new_selected = Hierarchy {
                 world,
-                state: hierarchy_state,
+                state: &mut hierarchy_state,
                 type_registry: &type_registry,
-                add_state: add_state.as_deref(),
+                // add_state: add_state.as_deref(),
             }
             .show(ui);
 
             if new_selected {
-                inspector_state.selected = InspectorSelection::Entities;
+                let mut v = cx.get_mut::<InspectorState>(world).unwrap();
+                v.selected = InspectorSelection::Entities;
             }
+            let mut v = cx.get_mut::<HierarchyState>(world).unwrap();
+            *v.as_mut() = hierarchy_state;
         });
     }
+}
 
-    fn app_setup(app: &mut bevy::prelude::App) {
+impl Plugin for HierarchyWindow {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_editor_window::<HierarchyWindow>();
+
         // picking::setup(app);
         app.add_systems(PostUpdate, clear_removed_entites);
         // .add_system(handle_events);
@@ -69,9 +66,10 @@ impl EditorWindow for HierarchyWindow {
     }
 }
 
-fn clear_removed_entites(mut editor: ResMut<Editor>, entities: &Entities) {
-    let state = editor.window_state_mut::<HierarchyWindow>().unwrap();
-    state.selected.retain(|entity| entities.contains(entity));
+fn clear_removed_entites(mut state: Query<&mut HierarchyState>, entities: &Entities) {
+    for mut state in state.iter_mut() {
+        state.selected.retain(|entity| entities.contains(entity));
+    }
 }
 
 /*fn handle_events(
@@ -110,32 +108,32 @@ fn clear_removed_entites(mut editor: ResMut<Editor>, entities: &Entities) {
 }*/
 
 fn extract_wireframe_for_selected(
-    editor: Extract<Res<Editor>>,
+    debug: Extract<Res<DebugSettings>>,
+    state: Extract<Query<&HierarchyState>>,
     mut commands: Commands,
     query: Extract<Query<RenderEntity>>,
 ) {
-    let wireframe_for_selected = editor
-        .window_state::<DebugSettingsWindow>()
-        .map_or(false, |settings| settings.highlight_selected);
-
-    if wireframe_for_selected {
-        let selected = &editor.window_state::<HierarchyWindow>().unwrap().selected;
-        for selected in selected.iter() {
-            if let Ok(r_id) = query.get(selected) {
-                if let Some(mut entity) = commands.get_entity(r_id) {
-                    entity.insert(Wireframe);
+    if debug.highlight_selected {
+        for state in state.iter() {
+            let selected = &state.selected;
+            for selected in selected.iter() {
+                if let Ok(r_id) = query.get(selected) {
+                    if let Some(mut entity) = commands.get_entity(r_id) {
+                        entity.insert(Wireframe);
+                    }
                 }
             }
         }
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Component)]
 pub struct HierarchyState {
     pub selected: SelectedEntities,
     rename_info: Option<RenameInfo>,
 }
 
+#[derive(Debug, Clone)]
 pub struct RenameInfo {
     entity: Entity,
     renaming: bool,
@@ -146,7 +144,7 @@ struct Hierarchy<'a> {
     world: &'a mut World,
     state: &'a mut HierarchyState,
     type_registry: &'a TypeRegistry,
-    add_state: Option<&'a AddWindowState>,
+    // add_state: Option<&'a AddWindowState>,
 }
 
 impl Hierarchy<'_> {
@@ -183,14 +181,14 @@ impl Hierarchy<'_> {
                     ui.close_menu();
                 }
 
-                if let Some(add_state) = self.add_state {
-                    ui.menu_button("Add", |ui| {
-                        if let Some(add_item) = add_ui(ui, add_state) {
-                            add_item.add_to_entity(world, entity);
-                            ui.close_menu();
-                        }
-                    });
-                }
+                // if let Some(add_state) = self.add_state {
+                //     ui.menu_button("Add", |ui| {
+                //         if let Some(add_item) = add_ui(ui, add_state) {
+                //             add_item.add_to_entity(world, entity);
+                //             ui.close_menu();
+                //         }
+                //     });
+                // }
             }),
             shortcircuit_entity: Some(&mut |ui, entity, world, rename_info| {
                 if let Some(rename_info) = rename_info {

@@ -1,13 +1,18 @@
 use bevy::{diagnostic::DiagnosticsStore, prelude::*};
-use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
+use bevy_editor_pls_core::{
+    editor_window::{EditorWindow, EditorWindowContext},
+    AddEditorWindow,
+};
 use bevy_inspector_egui::egui;
 
+#[derive(Debug, Clone, Default, Component)]
 pub struct DiagnosticsWindow;
 impl EditorWindow for DiagnosticsWindow {
-    type State = ();
-    const NAME: &'static str = "Diagnostics";
+    fn name(&self) -> &'static str {
+        "Diagnostics"
+    }
 
-    fn ui(world: &mut World, _cx: EditorWindowContext, ui: &mut egui::Ui) {
+    fn ui(&self, world: &mut World, _cx: EditorWindowContext, ui: &mut egui::Ui) {
         let diagnostics = match world.get_resource::<DiagnosticsStore>() {
             Some(diagnostics) => diagnostics,
             None => {
@@ -16,6 +21,11 @@ impl EditorWindow for DiagnosticsWindow {
             }
         };
         diagnostic_ui(ui, diagnostics);
+    }
+}
+impl Plugin for DiagnosticsWindow {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_editor_window::<Self>();
     }
 }
 

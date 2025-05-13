@@ -1,12 +1,16 @@
+use std::alloc::System;
 use std::any::{Any, TypeId};
 
+use bevy::ecs::system::SystemChangeTick;
+use bevy::utils::hashbrown::{HashMap, HashSet};
 use bevy::window::WindowMode;
-use bevy::{prelude::*, utils::HashMap};
+use bevy::{prelude::*};
 use bevy_inspector_egui::bevy_egui::{egui, EguiContext};
+use bevy_trait_query::One;
 use egui_dock::{NodeIndex, SurfaceIndex, TabBarStyle, TabIndex};
 use indexmap::IndexMap;
 
-use crate::editor_window::{EditorWindow, EditorWindowContext};
+use crate::editor_window::{EditorWindow, EditorWindowContext, EditorWindowInstance};
 
 #[non_exhaustive]
 #[derive(Event)]
@@ -32,9 +36,7 @@ pub struct Editor {
     active_editor_interaction: Option<ActiveEditorInteraction>,
     listening_for_text: bool,
     viewport: egui::Rect,
-
-    windows: IndexMap<TypeId, EditorWindowData>,
-    window_states: HashMap<TypeId, EditorWindowState>,
+    window_cache: HashMap<Entity, Box<dyn EditorWindow>>,
 }
 impl Editor {
     pub fn new(on_window: Entity, always_active: bool) -> Self {
@@ -47,9 +49,7 @@ impl Editor {
             active_editor_interaction: None,
             listening_for_text: false,
             viewport: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(640., 480.)),
-
-            windows: IndexMap::default(),
-            window_states: HashMap::default(),
+            window_cache: default(),
         }
     }
 
@@ -72,7 +72,7 @@ impl Editor {
         self.active = active;
     }
 
-    pub fn viewport(&self) -> egui::Rect {
+    pub fn viegport(&self) -> egui::Rect {
         self.viewport
     }
     pub fn is_in_viewport(&self, pos: egui::Pos2) -> bool {
@@ -100,173 +100,130 @@ impl Editor {
     }
 }
 
-pub(crate) type UiFn =
-    Box<dyn Fn(&mut World, EditorWindowContext, &mut egui::Ui) + Send + Sync + 'static>;
-pub(crate) type EditorWindowState = Box<dyn Any + Send + Sync>;
+// pub(crate) type UiFn =
+//     Box<dyn Fn(Entity, &mut World, EditorWindowContext, &mut egui::Ui) + Send + Sync + 'static>;
+// pub(crate) type EditorWindowState = Box<dyn Any + Send + Sync>;
 
-struct EditorWindowData {
-    name: &'static str,
-    ui_fn: UiFn,
-    menu_ui_fn: UiFn,
-    viewport_toolbar_ui_fn: UiFn,
-    viewport_ui_fn: UiFn,
-    default_size: (f32, f32),
-}
+// struct EditorWindowData {
+//     fns: Box<dyn EditorWindow>
+// }
 
 #[derive(Resource)]
-pub struct EditorInternalState {
-    state: egui_dock::DockState<TreeTab>,
-    pub(crate) floating_windows: Vec<FloatingWindow>,
-
-    next_floating_window_id: u32,
+pub struct EditorTabs {
+    pub state: egui_dock::DockState<TreeTab>,
+    // NOTE egui dock supports multibple surfaces so why do we need this?
+    // pub(crate) floating_windows: Vec<FloatingWindow>,
+    // next_floating_window_id: u32,
 }
 
-impl Default for EditorInternalState {
+impl Default for EditorTabs {
     fn default() -> Self {
         Self {
-            state: egui_dock::DockState::new(vec![TreeTab::GameView]),
-            floating_windows: Default::default(),
-            next_floating_window_id: Default::default(),
+            state: egui_dock::DockState::new(vec![]),
+            // floating_windows: Default::default(),
+            // next_floating_window_id: Default::default(),
         }
     }
 }
 
-#[derive(Copy, Clone)]
-enum TreeTab {
-    GameView,
-    CustomWindow(TypeId),
+// TODO perhaps replace with just Entity
+#[derive(Clone, Copy, Deref)]
+pub struct TreeTab {
+    pub entity: Entity,
 }
-
-impl EditorInternalState {
-    pub fn push_to_focused_leaf<W: EditorWindow>(&mut self) {
-        self.state
-            .push_to_focused_leaf(TreeTab::CustomWindow(TypeId::of::<W>()));
-        if let Some((surface_index, node_index)) = self.state.focused_leaf() {
-            self.state
-                .set_active_tab((surface_index, node_index, TabIndex(0)));
-        };
-    }
-
-    pub fn split<W: EditorWindow>(
-        &mut self,
-        parent: NodeIndex,
-        split: egui_dock::Split,
-        fraction: f32,
-    ) -> [NodeIndex; 2] {
-        let node = egui_dock::Node::leaf(TreeTab::CustomWindow(TypeId::of::<W>()));
-        self.state
-            .split((SurfaceIndex::main(), parent), split, fraction, node)
-    }
-
-    pub fn split_right<W: EditorWindow>(
-        &mut self,
-        parent: NodeIndex,
-        fraction: f32,
-    ) -> [NodeIndex; 2] {
-        self.split::<W>(parent, egui_dock::Split::Right, fraction)
-    }
-    pub fn split_left<W: EditorWindow>(
-        &mut self,
-        parent: NodeIndex,
-        fraction: f32,
-    ) -> [NodeIndex; 2] {
-        self.split::<W>(parent, egui_dock::Split::Left, fraction)
-    }
-    pub fn split_above<W: EditorWindow>(
-        &mut self,
-        parent: NodeIndex,
-        fraction: f32,
-    ) -> [NodeIndex; 2] {
-        self.split::<W>(parent, egui_dock::Split::Above, fraction)
-    }
-    pub fn split_below<W: EditorWindow>(
-        &mut self,
-        parent: NodeIndex,
-        fraction: f32,
-    ) -> [NodeIndex; 2] {
-        self.split::<W>(parent, egui_dock::Split::Below, fraction)
-    }
-
-    pub fn split_many(
-        &mut self,
-        parent: NodeIndex,
-        fraction: f32,
-        split: egui_dock::Split,
-        windows: &[TypeId],
-    ) -> [NodeIndex; 2] {
-        let tabs = windows.iter().copied().map(TreeTab::CustomWindow).collect();
-        let node = egui_dock::Node::leaf_with(tabs);
-        self.state
-            .split((SurfaceIndex::main(), parent), split, fraction, node)
+impl From<Entity> for TreeTab {
+    fn from(entity: Entity) -> Self {
+        Self { entity }
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct FloatingWindow {
-    pub(crate) window: TypeId,
-    pub(crate) id: u32,
-    pub(crate) initial_position: Option<egui::Pos2>,
-}
+impl EditorTabs {
+    // pub fn push_to_focused_leaf<W: EditorWindow>(&mut self) {
+    //     self.state
+    //         .push_to_focused_leaf(TreeTab::CustomWindow(TypeId::of::<W>()));
+    //     if let Some((surface_index, node_index)) = self.state.focused_leaf() {
+    //         self.state
+    //             .set_active_tab((surface_index, node_index, TabIndex(0)));
+    //     };
+    // }
 
-impl EditorInternalState {
-    pub(crate) fn next_floating_window_id(&mut self) -> u32 {
-        let id = self.next_floating_window_id;
-        self.next_floating_window_id += 1;
-        id
-    }
-}
+    // pub fn split<W: EditorWindow>(
+    //     &mut self,
+    //     parent: NodeIndex,
+    //     split: egui_dock::Split,
+    //     fraction: f32,
+    // ) -> [NodeIndex; 2] {
+    //     let node = egui_dock::Node::leaf(TreeTab::CustomWindow(TypeId::of::<W>()));
+    //     self.state
+    //         .split((SurfaceIndex::main(), parent), split, fraction, node)
+    // }
 
-fn ui_fn<W: EditorWindow>(world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
-    W::ui(world, cx, ui);
-}
-fn menu_ui_fn<W: EditorWindow>(world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
-    W::menu_ui(world, cx, ui);
-}
-fn viewport_toolbar_ui_fn<W: EditorWindow>(
-    world: &mut World,
-    cx: EditorWindowContext,
-    ui: &mut egui::Ui,
-) {
-    W::viewport_toolbar_ui(world, cx, ui);
-}
-fn viewport_ui_fn<W: EditorWindow>(world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
-    W::viewport_ui(world, cx, ui);
+    // pub fn split_right<W: EditorWindow>(
+    //     &mut self,
+    //     parent: NodeIndex,
+    //     fraction: f32,
+    // ) -> [NodeIndex; 2] {
+    //     self.split::<W>(parent, egui_dock::Split::Right, fraction)
+    // }
+    // pub fn split_left<W: EditorWindow>(
+    //     &mut self,
+    //     parent: NodeIndex,
+    //     fraction: f32,
+    // ) -> [NodeIndex; 2] {
+    //     self.split::<W>(parent, egui_dock::Split::Left, fraction)
+    // }
+    // pub fn split_above<W: EditorWindow>(
+    //     &mut self,
+    //     parent: NodeIndex,
+    //     fraction: f32,
+    // ) -> [NodeIndex; 2] {
+    //     self.split::<W>(parent, egui_dock::Split::Above, fraction)
+    // }
+    // pub fn split_below<W: EditorWindow>(
+    //     &mut self,
+    //     parent: NodeIndex,
+    //     fraction: f32,
+    // ) -> [NodeIndex; 2] {
+    //     self.split::<W>(parent, egui_dock::Split::Below, fraction)
+    // }
+
+    // pub fn split_many(
+    //     &mut self,
+    //     parent: NodeIndex,
+    //     fraction: f32,
+    //     split: egui_dock::Split,
+    //     windows: &[TypeId],
+    // ) -> [NodeIndex; 2] {
+    //     let tabs = windows.iter().copied().map(TreeTab::CustomWindow).collect();
+    //     let node = egui_dock::Node::leaf_with(tabs);
+    //     self.state
+    //         .split((SurfaceIndex::main(), parent), split, fraction, node)
+    // }
 }
 
 impl Editor {
     pub fn add_window<W: EditorWindow>(&mut self) {
-        let type_id = std::any::TypeId::of::<W>();
-        let ui_fn = Box::new(ui_fn::<W>);
-        let menu_ui_fn = Box::new(menu_ui_fn::<W>);
-        let viewport_toolbar_ui_fn = Box::new(viewport_toolbar_ui_fn::<W>);
-        let viewport_ui_fn = Box::new(viewport_ui_fn::<W>);
-        let data = EditorWindowData {
-            ui_fn,
-            menu_ui_fn,
-            viewport_toolbar_ui_fn,
-            viewport_ui_fn,
-            name: W::NAME,
-            default_size: W::DEFAULT_SIZE,
-        };
-        if self.windows.insert(type_id, data).is_some() {
-            panic!(
-                "window of type {} already inserted",
-                std::any::type_name::<W>()
-            );
-        }
-        self.window_states
-            .insert(type_id, Box::<<W as EditorWindow>::State>::default());
-    }
-
-    pub fn window_state_mut<W: EditorWindow>(&mut self) -> Option<&mut W::State> {
-        self.window_states
-            .get_mut(&TypeId::of::<W>())
-            .and_then(|s| s.downcast_mut::<W::State>())
-    }
-    pub fn window_state<W: EditorWindow>(&self) -> Option<&W::State> {
-        self.window_states
-            .get(&TypeId::of::<W>())
-            .and_then(|s| s.downcast_ref::<W::State>())
+        // let type_id = std::any::TypeId::of::<W>();
+        // let ui_fn = Box::new(ui_fn::<W>);
+        // let menu_ui_fn = Box::new(menu_ui_fn::<W>);
+        // let viewport_toolbar_ui_fn = Box::new(viewport_toolbar_ui_fn::<W>);
+        // let viewport_ui_fn = Box::new(viewport_ui_fn::<W>);
+        // let data = EditorWindowData {
+        //     ui_fn,
+        //     menu_ui_fn,
+        //     viewport_toolbar_ui_fn,
+        //     viewport_ui_fn,
+        //     name: W::NAME,
+        //     default_size: W::DEFAULT_SIZE,
+        // };
+        // if self.windows.insert(type_id, data).is_some() {
+        //     panic!(
+        //         "window of type {} already inserted",
+        //         std::any::type_name::<W>()
+        //     );
+        // }
+        // self.window_states
+        //     .insert(type_id, Box::<<W as EditorWindow>::State>::default());
     }
 }
 
@@ -281,18 +238,61 @@ impl Editor {
             };
             let egui_context = egui_context.get_mut().clone();
 
-            world.resource_scope(
-                |world, mut editor_internal_state: Mut<EditorInternalState>| {
-                    world.resource_scope(|world, mut editor_events: Mut<Events<EditorEvent>>| {
-                        editor.editor_ui(
-                            world,
-                            &egui_context,
-                            &mut editor_internal_state,
-                            &mut editor_events,
-                        );
-                    });
-                },
-            );
+            world.resource_scope(|world, mut editor_internal_state: Mut<EditorTabs>| {
+                // TODO move to own system or observer or hook
+                let tabs: HashSet<Entity> = editor_internal_state
+                    .state
+                    .iter_all_tabs()
+                    .map(|a| a.1.entity)
+                    .collect();
+
+                let mut windows =
+                    world.query::<(Entity, &EditorWindowInstance, One<&dyn EditorWindow>)>();
+                for (entity, _, methods) in windows.iter(&world) {
+                    // design considerations:
+                    // no matter what ui() cannot be passed &mut World and &self, if self is in ECS
+                    // no matter what it must be passed self here, since dyn doesn't support static methods
+                    // we can either maintain a type_id map, or we can dyn clone + bevy_trait_query
+                    // the later was more drop-in
+                    match editor.window_cache.get_mut(&entity) {
+                        Some(v) => {
+                            if methods.is_changed() {
+                                *v = dyn_clone::clone_box(&*methods);
+                            }
+                        }
+                        None => {
+                            editor
+                                .window_cache
+                                .insert(entity, dyn_clone::clone_box(&*methods));
+                        }
+                    }
+
+                    if !tabs.contains(&entity) {
+                        editor_internal_state
+                            .state
+                            .main_surface_mut()
+                            .push_to_focused_leaf(TreeTab { entity });
+                    }
+                }
+
+                let last_change_tick = world.last_change_tick();
+                let change_tick = world.change_tick();
+                editor_internal_state.state.retain_tabs(|t| {
+                    windows.contains(t.entity, &world, last_change_tick, change_tick)
+                });
+                editor.window_cache.retain(|entity, _| {
+                    windows.contains(*entity, &world, last_change_tick, change_tick)
+                });
+
+                world.resource_scope(|world, mut editor_events: Mut<Events<EditorEvent>>| {
+                    editor.editor_ui(
+                        world,
+                        &egui_context,
+                        &mut editor_internal_state,
+                        &mut editor_events,
+                    );
+                });
+            });
         });
     }
 
@@ -300,13 +300,13 @@ impl Editor {
         &mut self,
         world: &mut World,
         ctx: &egui::Context,
-        internal_state: &mut EditorInternalState,
+        internal_state: &mut EditorTabs,
         editor_events: &mut Events<EditorEvent>,
     ) {
         self.editor_menu_bar(world, ctx, internal_state, editor_events);
 
         if !self.active {
-            self.editor_floating_windows(world, ctx, internal_state);
+            // self.editor_floating_windows(world, ctx, internal_state);
             self.pointer_used = ctx.wants_pointer_input();
             return;
         }
@@ -337,7 +337,7 @@ impl Editor {
         let pointer_pos = ctx.input(|input| input.pointer.interact_pos());
         self.pointer_used = pointer_pos.map_or(false, |pos| !self.is_in_viewport(pos));
 
-        self.editor_floating_windows(world, ctx, internal_state);
+        // self.editor_floating_windows(world, ctx, internal_state);
 
         self.listening_for_text = ctx.wants_keyboard_input();
 
@@ -358,7 +358,7 @@ impl Editor {
         &mut self,
         world: &mut World,
         ctx: &egui::Context,
-        internal_state: &mut EditorInternalState,
+        internal_state: &mut EditorTabs,
         editor_events: &mut Events<EditorEvent>,
     ) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -370,15 +370,16 @@ impl Editor {
                     });
                 }
 
-                ui.menu_button("Open window", |ui| {
-                    for (&_, window) in self.windows.iter() {
-                        let cx = EditorWindowContext {
-                            window_states: &mut self.window_states,
-                            internal_state,
-                        };
-                        (window.menu_ui_fn)(world, cx, ui);
-                    }
-                });
+                //TODO
+                // ui.menu_button("Open window", |ui| {
+                //     for (&_, window) in self.windows.iter() {
+                //         let cx = EditorWindowContext {
+                //             entity: Entity::PLACEHOLDER,
+                //             internal_state,
+                //         };
+                //         (window.menu_ui_fn)(world, cx, ui);
+                //     }
+                // });
             })
             .response;
             // .interact(egui::Sense::click());
@@ -398,146 +399,30 @@ impl Editor {
             }
         });
     }
-
-    fn editor_window_inner(
-        &mut self,
-        world: &mut World,
-        internal_state: &mut EditorInternalState,
-        selected: TypeId,
-        ui: &mut egui::Ui,
-    ) {
-        let cx = EditorWindowContext {
-            window_states: &mut self.window_states,
-            internal_state,
-        };
-        let ui_fn = &self.windows.get_mut(&selected).unwrap().ui_fn;
-        ui_fn(world, cx, ui);
-    }
-
-    fn editor_window_context_menu(
-        &mut self,
-        ui: &mut egui::Ui,
-        internal_state: &mut EditorInternalState,
-        tab: TreeTab,
-    ) {
-        if ui.button("Pop out").clicked() {
-            if let TreeTab::CustomWindow(window) = tab {
-                let id = internal_state.next_floating_window_id();
-                internal_state.floating_windows.push(FloatingWindow {
-                    window,
-                    id,
-                    initial_position: None,
-                });
-            }
-
-            ui.close_menu();
-        }
-    }
-
-    fn editor_floating_windows(
-        &mut self,
-        world: &mut World,
-        ctx: &egui::Context,
-        internal_state: &mut EditorInternalState,
-    ) {
-        let mut close_floating_windows = Vec::new();
-        let floating_windows = internal_state.floating_windows.clone();
-
-        for (i, floating_window) in floating_windows.into_iter().enumerate() {
-            let id = egui::Id::new(floating_window.id);
-            let title = self.windows[&floating_window.window].name;
-
-            let mut open = true;
-            let default_size = self.windows[&floating_window.window].default_size;
-            let mut window = egui::Window::new(title)
-                .id(id)
-                .open(&mut open)
-                .resizable(true)
-                .default_size(default_size);
-            if let Some(initial_position) = floating_window.initial_position {
-                window = window.default_pos(initial_position - egui::Vec2::new(10.0, 10.0))
-            }
-            window.show(ctx, |ui| {
-                self.editor_window_inner(world, internal_state, floating_window.window, ui);
-                let desired_size = (ui.available_size() - (5.0, 5.0).into()).max((0.0, 0.0).into());
-                //ui.allocate_space(desired_size); Jesus fucking
-            });
-
-            if !open {
-                close_floating_windows.push(i);
-            }
-        }
-
-        for &to_remove in close_floating_windows.iter().rev() {
-            let _floating_window = internal_state.floating_windows.swap_remove(to_remove);
-        }
-    }
-
-    fn editor_viewport_toolbar_ui(
-        &mut self,
-        world: &mut World,
-        ui: &mut egui::Ui,
-        internal_state: &mut EditorInternalState,
-    ) {
-        for (_, window) in self.windows.iter() {
-            let cx = EditorWindowContext {
-                window_states: &mut self.window_states,
-                internal_state,
-            };
-
-            (window.viewport_toolbar_ui_fn)(world, cx, ui);
-        }
-    }
-
-    fn editor_viewport_ui(
-        &mut self,
-        world: &mut World,
-        ui: &mut egui::Ui,
-        internal_state: &mut EditorInternalState,
-    ) {
-        for (_, window) in self.windows.iter() {
-            let cx = EditorWindowContext {
-                window_states: &mut self.window_states,
-                internal_state,
-            };
-
-            (window.viewport_ui_fn)(world, cx, ui);
-        }
-    }
 }
 
 struct TabViewer<'a> {
     editor: &'a mut Editor,
-    internal_state: &'a mut EditorInternalState,
+    internal_state: &'a mut EditorTabs,
     world: &'a mut World,
 }
 impl egui_dock::TabViewer for TabViewer<'_> {
     type Tab = TreeTab;
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        match *tab {
-            TreeTab::GameView => {
-                let viewport = ui.clip_rect();
+        let cx = EditorWindowContext {
+            // window_states: &mut self.window_states,
+            entity: tab.entity,
+            internal_state: self.internal_state,
+        };
 
-                ui.horizontal(|ui| {
-                    ui.style_mut().spacing.button_padding = egui::vec2(2.0, 0.0);
-                    let height = ui.spacing().interact_size.y;
-                    ui.set_min_size(egui::vec2(ui.available_width(), height));
+        // design considerations:
+        // no matter what ui() cannot be passed &mut World and &self, if self is in ECS
+        // no matter what it must be passed self here, since dyn doesn't support static methods
+        // we can either maintain a type_id map, or we can dyn clone + bevy_trait_query
+        // the later was more drop-in
 
-                    self.editor
-                        .editor_viewport_toolbar_ui(self.world, ui, self.internal_state);
-                });
-
-                self.editor.viewport = viewport;
-
-                self.editor
-                    .editor_viewport_ui(self.world, ui, self.internal_state);
-            }
-            TreeTab::CustomWindow(window_id) => {
-                self.editor
-                    .editor_window_inner(self.world, self.internal_state, window_id, ui);
-            }
-        }
+        self.editor.window_cache[&tab.entity].ui(self.world, cx, ui);
     }
 
     fn context_menu(
@@ -547,21 +432,31 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         _surface: SurfaceIndex,
         _node: NodeIndex,
     ) {
-        self.editor
-            .editor_window_context_menu(ui, self.internal_state, *tab);
-    }
+        if ui.button("Pop out").clicked() {
+            // TODO
+            // if let TreeTab::CustomWindow(window) = tab {
+            //     let id = internal_state.next_floating_window_id();
+            //     internal_state.floating_windows.push(FloatingWindow {
+            //         window,
+            //         id,
+            //         initial_position: None,
+            //     });
+            // }
 
-    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
-        match *tab {
-            TreeTab::GameView => "Viewport".into(),
-            TreeTab::CustomWindow(window_id) => {
-                self.editor.windows.get(&window_id).unwrap().name.into()
-            }
+            ui.close_menu();
         }
     }
 
+    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+        self.editor.window_cache[&tab.entity].name().into()
+    }
+
     fn clear_background(&self, tab: &Self::Tab) -> bool {
-        !matches!(tab, TreeTab::GameView)
+        self.editor.window_cache[&tab.entity].clear_background()
+    }
+
+    fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
+        egui::Id::new(tab.entity)
     }
 }
 

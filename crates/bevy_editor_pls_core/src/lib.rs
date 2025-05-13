@@ -14,8 +14,9 @@ use bevy_inspector_egui::{
     bevy_egui::{EguiPlugin},
     DefaultInspectorConfigPlugin,
 };
-use editor::EditorInternalState;
-use editor_window::EditorWindow;
+use bevy_trait_query::RegisterExt;
+use editor::EditorTabs;
+use editor_window::{EditorWindow, EditorWindowInstance};
 
 pub use editor::{Editor, EditorEvent};
 
@@ -24,27 +25,19 @@ pub use egui_dock;
 
 /// Extension trait for [`App`] to add a new editor window type
 pub trait AddEditorWindow {
-    fn add_editor_window<W: EditorWindow>(&mut self) -> &mut Self;
-}
-
-struct WindowSetupPlugin<W>(PhantomData<fn() -> W>);
-impl<W: EditorWindow> Plugin for WindowSetupPlugin<W> {
-    fn build(&self, app: &mut App) {
-        W::app_setup(app);
-    }
-
-    fn finish(&self, app: &mut App) {
-        W::app_finish(app);
-    }
+    fn add_editor_window<W: EditorWindow + Default + Component>(&mut self) -> &mut Self;
 }
 
 impl AddEditorWindow for App {
-    fn add_editor_window<W: EditorWindow>(&mut self) -> &mut Self {
+    /// NOTE should be idempotent
+    fn add_editor_window<W: EditorWindow + Default + Component>(&mut self) -> &mut Self {
         let mut editor = self.world_mut().get_resource_mut::<Editor>().expect("Editor resource missing. Make sure to add the `EditorPlugin` before calling `app.add_editor_window`.");
-        editor.add_window::<W>();
+        editor.add_window::<W>(); // NOTE: currently does nothing
+        self.register_component_as::<dyn EditorWindow, W>();
 
-        self.add_plugins(WindowSetupPlugin::<W>(PhantomData));
-
+        // This is the component used to find Windows.
+        // In the future it could specify the type_id so we don't need bevy_trait_query
+        let _ = self.try_register_required_components::<W, EditorWindowInstance>();
         self
     }
 }
@@ -79,7 +72,7 @@ impl Plugin for EditorPlugin {
         };
 
         app.insert_resource(Editor::new(window_entity, always_active))
-            .init_resource::<EditorInternalState>()
+            .init_resource::<EditorTabs>()
             .add_event::<EditorEvent>()
             .configure_sets(PostUpdate, EditorSet::UI)
             .add_systems(
@@ -91,4 +84,13 @@ impl Plugin for EditorPlugin {
                     .before(EguiPostUpdateSet::ProcessOutput),
             );
     }
+}
+
+#[macro_export]
+macro_rules! set_if_neq {
+    ($field:expr, $new_val:expr) => {
+        if $field != $new_val {
+            $field = $new_val;
+        }
+    };
 }

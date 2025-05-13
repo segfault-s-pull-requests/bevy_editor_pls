@@ -1,54 +1,65 @@
 use std::any::TypeId;
 
-use super::add::{AddWindow, AddWindowState};
+use crate::hierarchy::HierarchyState;
+
+// use super::add::{AddWindow, AddWindowState};
 use super::hierarchy::HierarchyWindow;
+use bevy::app::Plugin;
 use bevy::asset::UntypedAssetId;
+use bevy::ecs::component::Component;
 use bevy::prelude::{AppTypeRegistry, Entity, World};
-use bevy::reflect::TypeRegistry;
+use bevy::reflect::{Reflect, TypeRegistry};
 use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
+use bevy_editor_pls_core::AddEditorWindow;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
 use bevy_inspector_egui::{bevy_inspector, egui};
 
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub enum InspectorSelection {
+    #[default]
     Entities,
     Resource(TypeId, String),
     Asset(TypeId, String, UntypedAssetId),
 }
 
+#[derive(Debug, Clone, Default, Component)]
 pub struct InspectorState {
     pub selected: InspectorSelection,
 }
 
-impl Default for InspectorState {
-    fn default() -> Self {
-        Self {
-            selected: InspectorSelection::Entities,
-        }
-    }
-}
-
+#[derive(Debug, Default, Component, Clone, Copy)]
 pub struct InspectorWindow;
 impl EditorWindow for InspectorWindow {
-    type State = InspectorState;
-    const NAME: &'static str = "Inspector";
-
-    fn ui(world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
+    fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
         let type_registry = world.resource::<AppTypeRegistry>().0.clone();
         let type_registry = type_registry.read();
 
-        let selected = &cx.state::<Self>().unwrap().selected;
-        let selected_entities = &cx.state::<HierarchyWindow>().unwrap().selected;
+        // now the problem is how to get the data we need.
+        // it is compounded by the problem of
+        // 1. needing to retain access to &mut world
+        // 2. how do ui's interact. Since we no longer have singletons.
+        //      could have Default<WindowState> as resouce.
+        //      could do manual plumbing.
+        // but a key thing here is it isn't that complicated.
 
-        let add_window_state = cx.state::<AddWindow>();
+        let selected = &cx.get::<InspectorState>(world).unwrap().selected.clone(); // TODO don't clone
+        let entities = &cx.get::<HierarchyState>(world).unwrap().selected.clone();
+
+        // let add_window_state = cx.state::<AddWindow>();
         inspector(
             world,
             selected,
-            selected_entities,
+            entities,
             ui,
-            add_window_state,
+            // add_window_state,
             &type_registry,
         );
+    }
+}
+
+impl Plugin for InspectorWindow {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_editor_window::<Self>();
     }
 }
 
@@ -57,7 +68,7 @@ fn inspector(
     selected: &InspectorSelection,
     selected_entities: &SelectedEntities,
     ui: &mut egui::Ui,
-    add_window_state: Option<&AddWindowState>,
+    // add_window_state: Option<&AddWindowState>,
     type_registry: &TypeRegistry,
 ) {
     egui::ScrollArea::vertical().show(ui, |ui| match *selected {
@@ -67,11 +78,11 @@ fn inspector(
             }
             &[entity] => {
                 bevy_inspector::ui_for_entity(world, entity, ui);
-                add_ui(ui, &[entity], world, add_window_state);
+                // add_ui(ui, &[entity], world, add_window_state);
             }
             entities => {
                 bevy_inspector::ui_for_entities_shared_components(world, entities, ui);
-                add_ui(ui, entities, world, add_window_state);
+                // add_ui(ui, entities, world, add_window_state);
             }
         },
         InspectorSelection::Resource(type_id, ref name) => {
@@ -85,25 +96,25 @@ fn inspector(
     });
 }
 
-fn add_ui(
-    ui: &mut egui::Ui,
-    entities: &[Entity],
-    world: &mut World,
-    add_window_state: Option<&AddWindowState>,
-) {
-    if let Some(add_window_state) = add_window_state {
-        let layout = egui::Layout::top_down(egui::Align::Center).with_cross_justify(true);
-        ui.with_layout(layout, |ui| {
-            ui.menu_button("+", |ui| {
-                if let Some(add_item) = crate::add::add_ui(ui, add_window_state) {
-                    for entity in entities {
-                        add_item.add_to_entity(world, *entity);
-                    }
-                }
-            });
-        });
-    }
-}
+// fn add_ui(
+//     ui: &mut egui::Ui,
+//     entities: &[Entity],
+//     world: &mut World,
+//     add_window_state: Option<&AddWindowState>,
+// ) {
+//     if let Some(add_window_state) = add_window_state {
+//         let layout = egui::Layout::top_down(egui::Align::Center).with_cross_justify(true);
+//         ui.with_layout(layout, |ui| {
+//             ui.menu_button("+", |ui| {
+//                 if let Some(add_item) = crate::add::add_ui(ui, add_window_state) {
+//                     for entity in entities {
+//                         add_item.add_to_entity(world, *entity);
+//                     }
+//                 }
+//             });
+//         });
+//     }
+// }
 
 pub fn label_button(ui: &mut egui::Ui, text: &str, text_color: egui::Color32) -> bool {
     ui.add(egui::Button::new(egui::RichText::new(text).color(text_color)).frame(false))

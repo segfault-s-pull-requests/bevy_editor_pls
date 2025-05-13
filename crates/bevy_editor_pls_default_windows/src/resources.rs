@@ -1,25 +1,36 @@
 use bevy::{
+    app::Plugin,
+    ecs::component::Component,
     prelude::{AppTypeRegistry, ReflectResource, World},
     reflect::TypeRegistry,
 };
-use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
+use bevy_editor_pls_core::{
+    editor_window::{EditorWindow, EditorWindowContext},
+    AddEditorWindow,
+};
 use bevy_inspector_egui::egui;
 
-use crate::inspector::{InspectorSelection, InspectorWindow};
+use crate::inspector::{InspectorSelection, InspectorState, InspectorWindow};
 
+#[derive(Debug, Clone, Default, Component)]
 pub struct ResourcesWindow;
 
 impl EditorWindow for ResourcesWindow {
-    type State = ();
-
-    const NAME: &'static str = "Resources";
-
-    fn ui(world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
-        let selection = &mut cx.state_mut::<InspectorWindow>().unwrap().selected;
-        let type_registry = world.resource::<AppTypeRegistry>();
+    fn ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
+        let type_registry = world.resource::<AppTypeRegistry>().clone(); //is Arc
         let type_registry = type_registry.read();
+        let mut selection = cx
+            .get_mut::<InspectorState>(world)
+            .unwrap()
+            .map_unchanged(|a| &mut a.selected);
 
-        select_resource(ui, &type_registry, selection);
+        select_resource(ui, &type_registry, &mut selection);
+    }
+}
+
+impl Plugin for ResourcesWindow {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_editor_window::<Self>();
     }
 }
 

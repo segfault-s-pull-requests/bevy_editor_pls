@@ -1,19 +1,19 @@
 use bevy::{pbr::DirectionalLightShadowMap, prelude::*, render::renderer::RenderDevice};
-use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
+use bevy_editor_pls_core::{
+    editor_window::{EditorWindow, EditorWindowContext},
+    AddEditorWindow,
+};
 use bevy_inspector_egui::{
     egui::{self, RichText},
     inspector_options::std_options::NumberOptions,
     reflect_inspector::{Context, InspectorUi},
 };
 
+#[derive(Debug, Default, Clone, Component)]
 pub struct RendererWindow;
 
 impl EditorWindow for RendererWindow {
-    type State = ();
-    const NAME: &'static str = "Renderer";
-    const DEFAULT_SIZE: (f32, f32) = (480.0, 240.0);
-
-    fn ui(world: &mut World, _: EditorWindowContext, ui: &mut egui::Ui) {
+    fn ui(&self, world: &mut World, _: EditorWindowContext, ui: &mut egui::Ui) {
         let type_registry = world.resource::<AppTypeRegistry>().clone();
         let type_registry = type_registry.read();
 
@@ -54,5 +54,11 @@ impl EditorWindow for RendererWindow {
                 }
             });
         });
+    }
+}
+
+impl Plugin for RendererWindow {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_editor_window::<Self>();
     }
 }

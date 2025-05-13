@@ -1,25 +1,38 @@
 use bevy::{
+    app::Plugin,
     asset::ReflectAsset,
+    ecs::component::Component,
     prelude::{AppTypeRegistry, World},
     reflect::TypeRegistry,
 };
-use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
+use bevy_editor_pls_core::{
+    editor_window::{EditorWindow, EditorWindowContext},
+    AddEditorWindow,
+};
 use bevy_inspector_egui::egui;
 
-use crate::inspector::{InspectorSelection, InspectorWindow};
+use crate::inspector::{InspectorSelection, InspectorState, InspectorWindow};
 
+#[derive(Debug, Default, Clone, Copy, Component)]
 pub struct AssetsWindow;
 
 impl EditorWindow for AssetsWindow {
-    type State = ();
-    const NAME: &'static str = "Assets";
+    fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
+        let mut selection = cx.get::<InspectorState>(world).unwrap().clone();
 
-    fn ui(world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
-        let selection = &mut cx.state_mut::<InspectorWindow>().unwrap().selected;
         let type_registry = world.resource::<AppTypeRegistry>();
         let type_registry = type_registry.read();
 
-        select_asset(ui, &type_registry, world, selection);
+        select_asset(ui, &type_registry, world, &mut selection.selected);
+        drop(type_registry);
+
+        let mut r = cx.get_mut::<InspectorState>(world).unwrap();
+        r.selected = selection.selected;
+    }
+}
+impl Plugin for AssetsWindow {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_editor_window::<Self>();
     }
 }
 
