@@ -32,7 +32,7 @@ impl AddEditorWindow for App {
     /// NOTE should be idempotent
     fn add_editor_window<W: EditorWindow + Default + Component>(&mut self) -> &mut Self {
         let mut editor = self.world_mut().get_resource_mut::<Editor>().expect("Editor resource missing. Make sure to add the `EditorPlugin` before calling `app.add_editor_window`.");
-        editor.add_window::<W>(); // NOTE: currently does nothing
+        editor.add_window(W::default());
         self.register_component_as::<dyn EditorWindow, W>();
 
         // This is the component used to find Windows.

@@ -8,7 +8,8 @@ description.workspace = true
 readme.workspace = true
 
 [features]
-highlight_changes = ["bevy-inspector-egui/highlight_changes"]
+bevy_metrics_dashboard = ["dep:bevy_metrics_dashboard"]
+default = [ "bevy_metrics_dashboard", "bevy-inspector-egui/highlight_changes" ]
 
 [dependencies]
 bevy = { version = "0.15", default-features = false, features = [
@@ -19,8 +20,10 @@ bevy = { version = "0.15", default-features = false, features = [
     "bevy_pbr",
     "bevy_core_pipeline",
 ] }
+bevy_metrics_dashboard = { workspace = true, optional = true }
 bevy_editor_pls_core.workspace = true
 bevy-inspector-egui.workspace = true
+bevy_egui.workspace = true
 # bevy_mod_picking = { git = "https://github.com/aevyrie/bevy_mod_picking", rev = "7a9ffd020b530acef25c8cf8bc9475b7a13bd353", default-features = false, features = [
 #     "backend_raycast",
 #     "backend_egui",

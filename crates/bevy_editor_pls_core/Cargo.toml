@@ -17,3 +17,5 @@ dyn-clone.workspace = true
 indexmap = "2"
 egui_dock.workspace = true
 polonius-the-crab = "*"
+# dyn_derive = "0.3.4"
+# dyn_std = "0.3.3"

@@ -30,7 +30,7 @@ impl BindingCondition {
                     editor.pointer_used()
                 }
             }
-            BindingCondition::EditorActive(editor_active) => editor_active == editor.active(),
+            BindingCondition::EditorActive(editor_active) => editor_active == editor.active,
             BindingCondition::ListeningForText(listening) => {
                 listening == editor.listening_for_text()
             }
@@ -204,7 +204,7 @@ pub fn editor_controls_system(
         &editor,
     ) && !editor.always_active()
     {
-        let was_active = editor.active();
+        let was_active = editor.active;
         editor.set_active(!was_active);
         editor_events.send(EditorEvent::Toggle {
             now_active: !was_active,
