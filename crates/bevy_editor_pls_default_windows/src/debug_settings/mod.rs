@@ -8,7 +8,7 @@ use bevy::{
     reflect::TypeRegistry,
     render::{render_resource::WgpuFeatures, renderer::RenderAdapter},
 };
-use bevy_editor_pls_core::{editor_window::EditorWindow, AddEditorWindow};
+use bevy_editor_pls_core::{editor_window::{EditorWindow, EditorWindowContext}, AddEditorWindow};
 use bevy_inspector_egui::{
     egui::{self, Grid},
     reflect_inspector::ui_for_value,
@@ -46,20 +46,20 @@ impl Default for DebugSettings {
 #[derive(Debug, Default, Clone, Copy, Component)]
 pub struct DebugSettingsWindow;
 impl EditorWindow for DebugSettingsWindow {
-    fn name(&self) -> &'static str {
-        "Debug settings"
+    fn name(&self, _world: &mut bevy::prelude::World, _cx: EditorWindowContext<'_>) -> String {
+        "Debug Settings".to_string()
     }
 
     fn ui(
         &self,
         world: &mut bevy::prelude::World,
-        cx: bevy_editor_pls_core::editor_window::EditorWindowContext,
+        _cx: EditorWindowContext,
         ui: &mut egui::Ui,
     ) {
         let type_registry = world.resource::<AppTypeRegistry>().clone();
         let type_registry = type_registry.read();
 
-        let mut state = world.resource_scope(|world, mut state: Mut<DebugSettings>| {
+        world.resource_scope(|world, mut state: Mut<DebugSettings>| {
             debug_ui(world, state.as_mut(), ui, &type_registry);
         });
     }

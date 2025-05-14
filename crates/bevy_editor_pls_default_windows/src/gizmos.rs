@@ -38,10 +38,6 @@ impl Default for GizmoState {
 pub struct GizmosWindow;
 
 impl EditorWindow for GizmosWindow {
-    fn name(&self) -> &'static str {
-        "Gizmos"
-    }
-
     fn ui(&self, _world: &mut World, _cx: EditorWindowContext, ui: &mut egui::Ui) {
         ui.label("Gizmos can currently not be configured");
         // could definitely change some settings here in the future

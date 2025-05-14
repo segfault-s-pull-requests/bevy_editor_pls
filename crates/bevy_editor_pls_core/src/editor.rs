@@ -1,14 +1,9 @@
-use std::alloc::System;
-use std::any::{Any, TypeId};
-
-use bevy::ecs::system::SystemChangeTick;
 use bevy::utils::hashbrown::{HashMap, HashSet};
 use bevy::window::WindowMode;
 use bevy::{prelude::*};
 use bevy_inspector_egui::bevy_egui::{egui, EguiContext};
 use bevy_trait_query::One;
-use egui_dock::{NodeIndex, SurfaceIndex, TabBarStyle, TabIndex};
-use indexmap::IndexMap;
+use egui_dock::{NodeIndex, SurfaceIndex, TabBarStyle };
 
 use crate::editor_window::{EditorWindow, EditorWindowContext, EditorWindowInstance};
 
@@ -30,13 +25,13 @@ pub struct Editor {
     on_window: Entity,
     always_active: bool,
 
-    active: bool,
+    pub active: bool,
 
     pointer_used: bool,
     active_editor_interaction: Option<ActiveEditorInteraction>,
     listening_for_text: bool,
-    viewport: egui::Rect,
     window_cache: HashMap<Entity, Box<dyn EditorWindow>>,
+    defined_windows: HashMap<String, Box<dyn EditorWindow>>,
 }
 impl Editor {
     pub fn new(on_window: Entity, always_active: bool) -> Self {
@@ -48,8 +43,8 @@ impl Editor {
             pointer_used: false,
             active_editor_interaction: None,
             listening_for_text: false,
-            viewport: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(640., 480.)),
             window_cache: default(),
+            defined_windows: default()
         }
     }
 
@@ -58,9 +53,6 @@ impl Editor {
     }
     pub fn always_active(&self) -> bool {
         self.always_active
-    }
-    pub fn active(&self) -> bool {
-        self.active
     }
 
     /// Panics if `self.always_active` is true
@@ -72,12 +64,9 @@ impl Editor {
         self.active = active;
     }
 
-    pub fn viegport(&self) -> egui::Rect {
-        self.viewport
-    }
-    pub fn is_in_viewport(&self, pos: egui::Pos2) -> bool {
-        self.viewport.contains(pos)
-    }
+    // pub fn is_in_viewport(&self, pos: egui::Pos2) -> bool {
+    //     self.viewport.contains(pos)
+    // }
 
     pub fn pointer_used(&self) -> bool {
         self.pointer_used
@@ -108,7 +97,7 @@ impl Editor {
 //     fns: Box<dyn EditorWindow>
 // }
 
-#[derive(Resource)]
+#[derive(Resource, Clone, Debug)]
 pub struct EditorTabs {
     pub state: egui_dock::DockState<TreeTab>,
     // NOTE egui dock supports multibple surfaces so why do we need this?
@@ -127,7 +116,7 @@ impl Default for EditorTabs {
 }
 
 // TODO perhaps replace with just Entity
-#[derive(Clone, Copy, Deref)]
+#[derive(Clone, Copy, Debug, Deref)]
 pub struct TreeTab {
     pub entity: Entity,
 }
@@ -202,28 +191,8 @@ impl EditorTabs {
 }
 
 impl Editor {
-    pub fn add_window<W: EditorWindow>(&mut self) {
-        // let type_id = std::any::TypeId::of::<W>();
-        // let ui_fn = Box::new(ui_fn::<W>);
-        // let menu_ui_fn = Box::new(menu_ui_fn::<W>);
-        // let viewport_toolbar_ui_fn = Box::new(viewport_toolbar_ui_fn::<W>);
-        // let viewport_ui_fn = Box::new(viewport_ui_fn::<W>);
-        // let data = EditorWindowData {
-        //     ui_fn,
-        //     menu_ui_fn,
-        //     viewport_toolbar_ui_fn,
-        //     viewport_ui_fn,
-        //     name: W::NAME,
-        //     default_size: W::DEFAULT_SIZE,
-        // };
-        // if self.windows.insert(type_id, data).is_some() {
-        //     panic!(
-        //         "window of type {} already inserted",
-        //         std::any::type_name::<W>()
-        //     );
-        // }
-        // self.window_states
-        //     .insert(type_id, Box::<<W as EditorWindow>::State>::default());
+    pub fn add_window<W: EditorWindow>(&mut self, w:W) {
+        self.defined_windows.insert(w.menu_name(), Box::new(w) as Box<dyn EditorWindow>);
     }
 }
 
@@ -248,6 +217,8 @@ impl Editor {
 
                 let mut windows =
                     world.query::<(Entity, &EditorWindowInstance, One<&dyn EditorWindow>)>();
+
+                // dbg!(windows.iter(world).map(|a|a.0).collect::<Vec<_>>());
                 for (entity, _, methods) in windows.iter(&world) {
                     // design considerations:
                     // no matter what ui() cannot be passed &mut World and &self, if self is in ECS
@@ -277,6 +248,7 @@ impl Editor {
 
                 let last_change_tick = world.last_change_tick();
                 let change_tick = world.change_tick();
+
                 editor_internal_state.state.retain_tabs(|t| {
                     windows.contains(t.entity, &world, last_change_tick, change_tick)
                 });
@@ -335,7 +307,7 @@ impl Editor {
         internal_state.state = tree;
 
         let pointer_pos = ctx.input(|input| input.pointer.interact_pos());
-        self.pointer_used = pointer_pos.map_or(false, |pos| !self.is_in_viewport(pos));
+        self.pointer_used = false;//pointer_pos.map_or(false, |pos| !self.is_in_viewport(pos));
 
         // self.editor_floating_windows(world, ctx, internal_state);
 
@@ -370,16 +342,15 @@ impl Editor {
                     });
                 }
 
-                //TODO
-                // ui.menu_button("Open window", |ui| {
-                //     for (&_, window) in self.windows.iter() {
-                //         let cx = EditorWindowContext {
-                //             entity: Entity::PLACEHOLDER,
-                //             internal_state,
-                //         };
-                //         (window.menu_ui_fn)(world, cx, ui);
-                //     }
-                // });
+                ui.menu_button("Open window", |ui| {
+                    for (&_, window) in self.defined_windows.iter() { 
+                        let cx = EditorWindowContext {
+                            entity: Entity::PLACEHOLDER,
+                            internal_state: internal_state,
+                        };
+                        window.menu_ui(world, cx, ui);
+                    }
+                });
             })
             .response;
             // .interact(egui::Sense::click());
@@ -422,6 +393,10 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         // we can either maintain a type_id map, or we can dyn clone + bevy_trait_query
         // the later was more drop-in
 
+        if self.world.get_entity(cx.entity).is_err() {
+            error!("{} seriously fuck egui", cx.entity);
+            return
+        }
         self.editor.window_cache[&tab.entity].ui(self.world, cx, ui);
     }
 
@@ -448,7 +423,11 @@ impl egui_dock::TabViewer for TabViewer<'_> {
     }
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
-        self.editor.window_cache[&tab.entity].name().into()
+        let cx = EditorWindowContext {
+            entity: tab.entity,
+            internal_state: self.internal_state,
+        };
+        self.editor.window_cache[&tab.entity].name(self.world, cx).into()
     }
 
     fn clear_background(&self, tab: &Self::Tab) -> bool {
@@ -457,6 +436,13 @@ impl egui_dock::TabViewer for TabViewer<'_> {
 
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
         egui::Id::new(tab.entity)
+    }
+
+    fn on_close(&mut self, tab: &mut Self::Tab) -> bool {
+        info!("despawning {}", tab.entity);
+        self.world.despawn(tab.entity);
+        true // ensure ui is NOT called again, as it will panic if it can't find it's entity
+        // XXX the documentation literally lies
     }
 }
 

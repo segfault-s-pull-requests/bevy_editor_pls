@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::reflect::TypeRegistry;
 use bevy::render::sync_world::RenderEntity;
 use bevy::render::{Extract, RenderApp};
+use bevy_editor_pls_core::editor_window::{DefaultLink, Link};
 use bevy_editor_pls_core::{editor, AddEditorWindow};
 use bevy_inspector_egui::bevy_inspector::guess_entity_name;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
@@ -56,6 +57,8 @@ impl EditorWindow for HierarchyWindow {
 impl Plugin for HierarchyWindow {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_editor_window::<HierarchyWindow>();
+        app.register_type::<Link<HierarchyState>>();
+        app.init_resource::<DefaultLink<HierarchyState>>(); 
 
         // picking::setup(app);
         app.add_systems(PostUpdate, clear_removed_entites);
@@ -127,7 +130,7 @@ fn extract_wireframe_for_selected(
     }
 }
 
-#[derive(Default, Clone, Component)]
+#[derive(Default, Clone, Component, TypePath)]
 pub struct HierarchyState {
     pub selected: SelectedEntities,
     rename_info: Option<RenameInfo>,

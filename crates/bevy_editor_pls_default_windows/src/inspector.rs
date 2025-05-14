@@ -7,13 +7,16 @@ use super::hierarchy::HierarchyWindow;
 use bevy::app::Plugin;
 use bevy::asset::UntypedAssetId;
 use bevy::ecs::component::Component;
+use bevy::ecs::entity::Entities;
+use bevy::ecs::reflect;
 use bevy::prelude::{AppTypeRegistry, Entity, World};
-use bevy::reflect::{Reflect, TypeRegistry};
-use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
+use bevy::reflect::{Reflect, TypePath, TypeRegistry};
+use bevy_editor_pls_core::editor_window::{DefaultLink, EditorWindow, EditorWindowContext, Link};
 use bevy_editor_pls_core::AddEditorWindow;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
 use bevy_inspector_egui::{bevy_inspector, egui};
 
+// TODO cant make reflect because of UnTypedAssetId
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub enum InspectorSelection {
     #[default]
@@ -22,7 +25,7 @@ pub enum InspectorSelection {
     Asset(TypeId, String, UntypedAssetId),
 }
 
-#[derive(Debug, Clone, Default, Component)]
+#[derive(Debug, Clone, Default, Component, TypePath)]
 pub struct InspectorState {
     pub selected: InspectorSelection,
 }
@@ -60,6 +63,8 @@ impl EditorWindow for InspectorWindow {
 impl Plugin for InspectorWindow {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_editor_window::<Self>();
+        app.register_type::<Link<InspectorState>>();
+        app.init_resource::<DefaultLink<InspectorState>>(); 
     }
 }
 

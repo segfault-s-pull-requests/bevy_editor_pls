@@ -61,35 +61,36 @@ fn camera_movement(
     time: Res<Time>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
 ) {
-    let (flycam, mut cam_transform) = cam.single_mut();
-    if !flycam.enable_movement {
-        return;
+    for (flycam, mut cam_transform) in cam.iter_mut(){
+        if !flycam.enable_movement {
+            continue;
+        }
+
+        let if_then_1 = |b| if b { 1.0 } else { 0.0 };
+        let forward = if_then_1(keyboard_input.pressed(flycam.key_forward))
+            - if_then_1(keyboard_input.pressed(flycam.key_back));
+        let sideways = if_then_1(keyboard_input.pressed(flycam.key_right))
+            - if_then_1(keyboard_input.pressed(flycam.key_left));
+        let up = if_then_1(keyboard_input.pressed(flycam.key_up))
+            - if_then_1(keyboard_input.pressed(flycam.key_down));
+
+        if forward == 0.0 && sideways == 0.0 && up == 0.0 {
+            return;
+        }
+
+        let speed = if keyboard_input.pressed(flycam.key_boost) {
+            20.0
+        } else {
+            5.0
+        };
+
+        let movement = Vec3::new(sideways, forward, up).normalize_or_zero() * speed * time.delta_secs();
+
+        let diff = cam_transform.forward() * movement.y
+            + cam_transform.right() * movement.x
+            + cam_transform.up() * movement.z;
+        cam_transform.translation += diff;
     }
-
-    let if_then_1 = |b| if b { 1.0 } else { 0.0 };
-    let forward = if_then_1(keyboard_input.pressed(flycam.key_forward))
-        - if_then_1(keyboard_input.pressed(flycam.key_back));
-    let sideways = if_then_1(keyboard_input.pressed(flycam.key_right))
-        - if_then_1(keyboard_input.pressed(flycam.key_left));
-    let up = if_then_1(keyboard_input.pressed(flycam.key_up))
-        - if_then_1(keyboard_input.pressed(flycam.key_down));
-
-    if forward == 0.0 && sideways == 0.0 && up == 0.0 {
-        return;
-    }
-
-    let speed = if keyboard_input.pressed(flycam.key_boost) {
-        20.0
-    } else {
-        5.0
-    };
-
-    let movement = Vec3::new(sideways, forward, up).normalize_or_zero() * speed * time.delta_secs();
-
-    let diff = cam_transform.forward() * movement.y
-        + cam_transform.right() * movement.x
-        + cam_transform.up() * movement.z;
-    cam_transform.translation += diff;
 }
 
 fn camera_look(
@@ -97,26 +98,27 @@ fn camera_look(
     mut mouse_motion_event_reader: EventReader<MouseMotion>,
     mut query: Query<(&mut FlycamControls, &mut Transform)>,
 ) {
-    let (mut flycam, mut transform) = query.single_mut();
-    if !flycam.enable_look || !mouse_input.pressed(MouseButton::Right) {
-        //Prevent accumulation of irrelevant events
-        mouse_motion_event_reader.clear();
-        return;
-    }
-    let mut delta: Vec2 = Vec2::ZERO;
-    for event in mouse_motion_event_reader.read() {
-        delta += event.delta;
-    }
-    if delta.is_nan() || delta.abs_diff_eq(Vec2::ZERO, f32::EPSILON) {
-        return;
-    }
+    for (mut flycam, mut transform) in query.iter_mut() {
+        if !flycam.enable_look || !mouse_input.pressed(MouseButton::Right) {
+            //Prevent accumulation of irrelevant events
+            mouse_motion_event_reader.clear();
+            return;
+        }
+        let mut delta: Vec2 = Vec2::ZERO;
+        for event in mouse_motion_event_reader.read() {
+            delta += event.delta;
+        }
+        if delta.is_nan() || delta.abs_diff_eq(Vec2::ZERO, f32::EPSILON) {
+            return;
+        }
 
-    flycam.yaw -= delta.x / 180.0 * flycam.sensitivity;
-    flycam.pitch -= delta.y / 180.0 * flycam.sensitivity;
+        flycam.yaw -= delta.x / 180.0 * flycam.sensitivity;
+        flycam.pitch -= delta.y / 180.0 * flycam.sensitivity;
 
-    flycam.pitch = flycam
-        .pitch
-        .clamp(-std::f32::consts::PI / 2.0, std::f32::consts::PI / 2.0);
+        flycam.pitch = flycam
+            .pitch
+            .clamp(-std::f32::consts::PI / 2.0, std::f32::consts::PI / 2.0);
 
-    transform.rotation = Quat::from_euler(EulerRot::YXZ, flycam.yaw, flycam.pitch, 0.0);
+        transform.rotation = Quat::from_euler(EulerRot::YXZ, flycam.yaw, flycam.pitch, 0.0);
+    }
 }

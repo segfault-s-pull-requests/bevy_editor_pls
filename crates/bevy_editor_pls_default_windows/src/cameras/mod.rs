@@ -6,13 +6,14 @@ pub mod camera_3d_panorbit;
 use std::any::type_name;
 use std::marker::PhantomData;
 
-use bevy::ecs::system::SystemState;
+use bevy::ecs::system::{self, SystemState};
 use bevy::render::camera::RenderTarget;
 use bevy::render::view::RenderLayers;
 use bevy::utils::HashSet;
 use bevy::window::{PrimaryWindow, WindowRef};
 use bevy::{prelude::*, render::primitives::Aabb};
 use bevy_editor_pls_core::editor::EditorTabs;
+use bevy_editor_pls_core::editor_window::EditorWindowsCollection;
 use bevy_editor_pls_core::egui_dock::{self, LeafHighlighting};
 use bevy_editor_pls_core::{set_if_neq, AddEditorWindow};
 use bevy_editor_pls_core::{
@@ -37,7 +38,8 @@ pub struct EditorCamera;
 // // Present only one the one currently active camera
 // #[derive(Component)]
 // pub struct ActiveEditorCamera;
-#[derive(Default, Clone, Component, Debug)]
+#[derive(Default, Clone, Component, Debug, Reflect)]
+#[reflect(Component)]
 pub struct CameraWindow {
     camera: Option<Entity>,
 }
@@ -74,18 +76,32 @@ impl EditorWindow for CameraWindow {
                     Option<&PanCamControls>,
                 ),
             )>,
-            Query<&CameraWindow>,
+            Query<&mut CameraWindow>,
             Commands,
         )> = SystemState::new(world);
 
-        let (cameras, windows, mut commands) = state.get_mut(world);
-        let window = windows.get(cx.entity).expect("should be impossible");
+        let (cameras, mut windows, mut commands) = state.get_mut(world);
+        let mut window = windows.get_mut(cx.entity).expect("should be impossible");
         let camera_entity = window.camera.unwrap_or(cx.entity);
         let Ok((_, _, name, is_editor_cam, controls)) = cameras.get(camera_entity) else {
-            warn!(
-                "missing camera {:?} for window {}",
-                window.camera, cx.entity
-            );
+            // disable warn because it's normal at startup if using behavior below
+            // warn!(
+            //     "missing camera {:?} for window {}",
+            //     window.camera, cx.entity
+            // );
+            if window.camera.is_none() {
+                // TODO move this to it's own system
+                if let Some(camera) = cameras
+                    .iter()
+                    .find(|f| !f.3 && matches!(f.1.target, RenderTarget::Window(_)))
+                {
+                    info!(
+                        "setting empty cameraWindow {}, to game camera {}",
+                        cx.entity, camera.0
+                    );
+                    window.camera = Some(camera.0);
+                }
+            }
             return;
         };
 
@@ -105,7 +121,9 @@ impl EditorWindow for CameraWindow {
         }
 
         ui.horizontal(|ui| {
-            if window.camera.is_some() {
+            // Untested, because I just use cameras fixed to the CameraWindow, plus gameview
+            if true {
+                //window.camera.is_some() {
                 let namer = |name: Option<&Name>, entity: Entity| {
                     format!(
                         "{} {}",
@@ -132,7 +150,7 @@ impl EditorWindow for CameraWindow {
 
             // menu to select controls
             ui.menu_button(camera_control_type, |ui| {
-                if ui.button(PanOrbitCamera::NAME).clicked() && controls.2.is_none() {
+                if ui.button(PanOrbitCamera::NAME).clicked(){
                     commands
                         .entity(camera_entity)
                         .reenable::<PanOrbitCamera>(Some(default()))
@@ -140,7 +158,7 @@ impl EditorWindow for CameraWindow {
                         .disable::<FlycamControls>(true);
                     ui.close_menu();
                 }
-                if ui.button(FlycamControls::NAME).clicked() && controls.2.is_none() {
+                if ui.button(FlycamControls::NAME).clicked(){
                     commands
                         .entity(camera_entity)
                         .reenable::<FlycamControls>(Some(default()))
@@ -148,7 +166,8 @@ impl EditorWindow for CameraWindow {
                         .disable::<PanOrbitCamera>(true);
                     ui.close_menu();
                 }
-                if ui.button(PanCamControls::NAME).clicked() && controls.2.is_none() {
+                //TODO 2d controls and cameras should be handled specially
+                if ui.button(PanCamControls::NAME).clicked(){
                     commands
                         .entity(camera_entity)
                         .reenable::<PanCamControls>(Some(default()))
@@ -156,7 +175,7 @@ impl EditorWindow for CameraWindow {
                         .disable::<PanOrbitCamera>(true);
                     ui.close_menu();
                 }
-                if ui.button("disable").clicked() && controls.2.is_none() {
+                if ui.button("disable").clicked(){
                     commands
                         .entity(camera_entity)
                         .disable::<PanCamControls>(true)
@@ -167,6 +186,47 @@ impl EditorWindow for CameraWindow {
             });
             // ui.checkbox(&mut state.show_ui, "UI"); //TODO?
         });
+
+        state.apply(world);
+    }
+
+    fn menu_ui(&self, world: &mut World, mut _cx: EditorWindowContext, ui: &mut egui::Ui) {
+        ui.menu_button("Camera", |ui| {
+            let new = if ui.button("Editor").clicked() {
+                world.spawn((CameraWindow::default(), default_editor_cam()))
+            } else if ui.button("Game").clicked() {
+                world.spawn(CameraWindow::default())
+            } else {
+                return;
+            }
+            .id();
+
+            let parent = world
+                .query::<(Entity, &EditorWindowsCollection)>()
+                .get_single(&world)
+                .map(|e| e.0)
+                .ok();
+            if let Some(parent) = parent {
+                world.entity_mut(new).set_parent(parent);
+            }
+        });
+    }
+
+    // TODO I don't like having to recompute this every time. how to do differen't
+    fn name(&self, world: &mut World, cx: EditorWindowContext) -> String {
+        let mut names = world.query_filtered::<&Name, With<Camera>>();
+
+        let window = world.get::<CameraWindow>(cx.entity).unwrap();
+        let camera = world.entity(window.camera.unwrap_or(cx.entity));
+        let name = camera.get::<Name>();
+        let unique = names.iter(world).filter(|n| Some(*n) == name).count() > 1;
+
+        let name = name.map(|n| n.as_str());
+        if unique {
+            name.unwrap().to_string()
+        } else {
+            format!("{} {}", name.unwrap_or_default(), camera.id())
+        }
     }
 
     fn clear_background(&self) -> bool {
@@ -262,7 +322,7 @@ fn set_editor_cam_active(
         .map(|(e, w)| w.camera.unwrap_or(e));
 
     for (camera_entity, camera, controls) in editor_cameras.iter_mut() {
-        let mut active = editor.active();
+        let mut active = editor.active;
         active &= focused == Some(camera_entity);
 
         //TODO reimplemnent whatever logic was being used
@@ -351,7 +411,7 @@ fn toggle_editor_cam(
 
     editor_events.clear();
 
-    if editor.active() {
+    if editor.active {
         for (entity, camera, saved, is_editor_cam) in cam_query.iter_mut() {
             if target_window(&camera, *primary_window) == Some(editor.window())
                 && !is_editor_cam
@@ -387,6 +447,10 @@ fn set_camera_viewports_and_enabled(
     mut cameras: Query<(Entity, &mut Camera)>,
     primary_window: Single<Entity, With<PrimaryWindow>>,
 ) {
+    if !editor.active {
+        return;
+    }
+
     let Ok((egui_settings, root_window)) = root_window.get(editor.window()) else {
         warn!("missing editor window {}", editor.window());
         return;
@@ -398,7 +462,9 @@ fn set_camera_viewports_and_enabled(
         let Ok((camera_entity, mut camera)) =
             cameras.get_mut(window.camera.unwrap_or(window_entity))
         else {
-            warn!("missing camera {:?} for {}", window.camera, window_entity);
+            // TODO reenable once I fix the game camera init logic
+            // currently spams until tab is visible
+            // warn!("missing camera {:?} for {}", window.camera, window_entity);
             continue;
         };
 
@@ -419,11 +485,19 @@ fn set_camera_viewports_and_enabled(
             }
         }
 
-        let tab = tabs
+        let Some(tab) = tabs
             .state
             .iter_all_tabs()
             .find(|t| t.1.entity == window_entity)
-            .unwrap(); // I apologize
+        else {
+            warn!(
+                "missing tab for CameraWindow {}\n{:?}",
+                window_entity,
+                tabs.state.main_surface().iter().collect::<Vec<_>>()
+            );
+            continue;
+        };
+
         let node = &tabs.state[tab.0 .0][tab.0 .1];
         let egui_dock::Node::Leaf {
             rect: _,
@@ -454,7 +528,8 @@ fn set_camera_viewports_and_enabled(
 
         let viewport_size = viewport.size() * scale_factor;
         if !viewport_size.is_finite() {
-            panic!("editor viewport size is infinite");
+            error!("editor viewport size is infinite");
+            continue;
         }
         let viewport_size = UVec2::new(
             (viewport_size.x as u32).max(1),

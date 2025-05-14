@@ -8,10 +8,6 @@ use bevy_inspector_egui::egui;
 #[derive(Debug, Clone, Default, Component)]
 pub struct DiagnosticsWindow;
 impl EditorWindow for DiagnosticsWindow {
-    fn name(&self) -> &'static str {
-        "Diagnostics"
-    }
-
     fn ui(&self, world: &mut World, _cx: EditorWindowContext, ui: &mut egui::Ui) {
         let diagnostics = match world.get_resource::<DiagnosticsStore>() {
             Some(diagnostics) => diagnostics,

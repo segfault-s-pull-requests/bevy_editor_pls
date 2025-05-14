@@ -1,15 +1,23 @@
+use bevy::ecs::bundle::DynamicBundle;
 use bevy::ecs::change_detection::MutUntyped;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::system::Resource;
 use bevy::ecs::world::{Mut, Ref};
-use bevy::prelude::{App, World};
-use bevy::reflect::Reflect;
-use bevy::utils::HashMap;
+use bevy::prelude::*;
+use bevy::ptr::{Aligned, OwningPtr};
+use bevy::reflect::{Reflect};
+use bevy::state::commands;
 use bevy_inspector_egui::egui;
 use polonius_the_crab::{polonius, polonius_break, polonius_return};
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
+use std::ptr::NonNull;
+
+/// at the moment this is just for organization.
+#[derive(Debug, Default, Clone, Copy, Component)]
+pub struct EditorWindowsCollection;
 
 #[derive(Debug, Default, Clone, Copy, Component)]
 pub struct EditorWindowInstance;
@@ -17,12 +25,13 @@ pub struct EditorWindowInstance;
 /// An editor window type
 #[bevy_trait_query::queryable]
 pub trait EditorWindow: 'static + Send + Sync + dyn_clone::DynClone {
-    // type State: Default + Any + Send + Sync;
-    // const NAME: &'static str;
-    // const DEFAULT_SIZE: (f32, f32) = (0.0, 0.0);
+    fn name(&self, world: &mut World, cx: EditorWindowContext) -> String {
+        std::any::type_name::<Self>().trim_end_matches("Window").trim_end_matches("::").split("::").last().expect("split should never be empty").to_string()
+    }
 
-    fn name(&self) -> &'static str {
-        std::any::type_name::<Self>().trim_end_matches("Window")
+    // TODO I don't like this. Menu stuff could be it's own trait
+    fn menu_name(&self) -> String {
+        std::any::type_name::<Self>().trim_end_matches("Window").trim_end_matches("::").split("::").last().expect("split should never be empty").to_string()
     }
 
     fn default_size(&self) -> (f32, f32) {
@@ -32,13 +41,31 @@ pub trait EditorWindow: 'static + Send + Sync + dyn_clone::DynClone {
     fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui);
 
     /// Ui shown in the `Open Window` menu item. By default opens the window as a floating window.
-    fn menu_ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
+    fn menu_ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui){
         let _ = world;
 
-        if ui.button(self.name()).clicked() {
-            // TODO
-            // cx.open_floating_window::<Self>();
-            // ui.close_menu();
+        if ui.button(self.menu_name()).clicked() {
+            
+            self.spawn(world);
+        }
+    }
+
+    fn spawn(&self, world: &mut World){
+        let Some(id) = world.components().get_id(TypeId::of::<Self>()) else {
+            error!("EditorWindow {} doesn't implement Component.", std::any::type_name::<Self>());
+            return;
+        };
+        let data = dyn_clone::clone_box(self);
+        // safety: I just grabbed id from the world. and the data is a Self
+        // XXX I may or may not know how OwningPtr works
+        // https://discord.com/channels/691052431525675048/742569353878437978/1371946114554658817
+
+        unsafe {
+            let data : *mut Self = Box::into_raw(data);
+            let data : *mut ManuallyDrop<Self> = data as *mut ManuallyDrop<Self>; // to only free the box, not the recursive contents.
+            let ptr : OwningPtr<'_, Aligned> = OwningPtr::new(NonNull::new_unchecked(<*mut _>::cast(data)));
+            world.spawn_empty().insert_by_id(id, ptr);
+            drop(Box::from_raw(data)) // frees the box without dropping the contents (which insert_by_id  has moved into ECS)
         }
     }
 
@@ -203,7 +230,7 @@ impl EditorWindowContext<'_> {
 // }
 
 #[derive(Debug, Clone, Resource, Reflect)]
-enum DefaultLink<M> {
+pub enum DefaultLink<M> {
     Data(M),
     Link(Entity),
 }
@@ -215,4 +242,5 @@ impl<M: Default> Default for DefaultLink<M> {
 }
 
 #[derive(Debug, Copy, Clone, Component, Reflect)]
-struct Link<M>(Entity, PhantomData<M>);
+#[reflect(Component)]
+pub struct Link<M>(pub Entity, #[reflect(ignore)] pub PhantomData<M>);
