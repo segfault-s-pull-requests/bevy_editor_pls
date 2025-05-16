@@ -8,31 +8,41 @@ use bevy_editor_pls_core::{
 use bevy::{prelude::*, ui};
 use bevy_inspector_egui::egui::{self, Ui};
 use bevy_metrics_dashboard::{
-    registry::MetricsRegistry, CachedPlotConfigs, ClearBucketsSystem, CoreMetricsPlugin, DashboardPlugin, DashboardWindow, NamespaceTreeWindow, RegistryPlugin, RenderMetricsPlugin, RequestPlot
+    registry::MetricsRegistry,
+    CachedPlotConfigs,
+    ClearBucketsSystem,
+    CoreMetricsPlugin,
+    DashboardPlugin,
+    DashboardWindow,
+    NamespaceTreeWindow,
+    RegistryPlugin,
+    RenderMetricsPlugin,
+    RequestPlot,
 };
-
 
 /// wraps the bevy_metrics_dashboard DashboardWindow
 #[derive(Debug, Clone, Default, Component)]
-#[require(DashboardWindow(|| DashboardWindow::new("Metrics")))] 
+#[require(DashboardWindow(|| DashboardWindow::new("Metrics")))]
 pub struct MetricsWindow;
 impl EditorWindow for MetricsWindow {
     fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
-        world.run_system_cached_with(draw_all, (cx.entity, ui)).unwrap();
+        world
+            .run_system_cached_with(draw_all, (cx.entity, ui))
+            .unwrap();
     }
 }
 
 // TODO move to core crate
-pub struct EditorInputs<'a>{
-    pub entity: Entity, 
-    pub ui: &'a mut Ui
+pub struct EditorInputs<'a> {
+    pub entity: Entity,
+    pub ui: &'a mut Ui,
 }
-impl SystemInput for EditorInputs<'_>{
+impl SystemInput for EditorInputs<'_> {
     type Param<'i> = EditorInputs<'i>;
     type Inner<'i> = (Entity, &'i mut Ui);
 
     fn wrap((entity, ui): Self::Inner<'_>) -> Self::Param<'_> {
-        EditorInputs{entity, ui}
+        EditorInputs { entity, ui }
     }
 }
 
@@ -76,25 +86,21 @@ pub fn draw_all(
 impl Plugin for MetricsWindow {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_editor_window::<Self>();
-        if !app.is_plugin_added::<RegistryPlugin>(){
+        if !app.is_plugin_added::<RegistryPlugin>() {
             app.add_plugins(RegistryPlugin::new());
         }
-        // TODO: non-generic, move into game repo 
-        if !app.is_plugin_added::<CoreMetricsPlugin>(){
+        // TODO: non-generic, move into game repo
+        if !app.is_plugin_added::<CoreMetricsPlugin>() {
             app.add_plugins(CoreMetricsPlugin);
         }
-        if !app.is_plugin_added::<RenderMetricsPlugin>(){
+        if !app.is_plugin_added::<RenderMetricsPlugin>() {
             app.add_plugins(RenderMetricsPlugin);
         }
-
 
         // https://github.com/bonsairobo/bevy_metrics_dashboard/blob/f4dcff0a2732b2ec6d7c4c924d258c327c9be9c5/src/dashboard_plugin.rs#L15
         app.add_event::<RequestPlot>()
             .init_resource::<CachedPlotConfigs>()
-            .add_systems(
-                Update,
-                (NamespaceTreeWindow::draw_all),
-            )
+            .add_systems(Update, (NamespaceTreeWindow::draw_all))
             // Enforce strict ordering:
             // metrics producers (before Last) --> metrics consumers --> bucket clearing
             .add_systems(
@@ -104,7 +110,11 @@ impl Plugin for MetricsWindow {
     }
     fn finish(&self, app: &mut App) {
         if app.is_plugin_added::<DashboardPlugin>() {
-            error!("plugins {} and {} are incompatible, only add one", type_name::<Self>(), type_name::<DashboardPlugin>());
+            error!(
+                "plugins {} and {} are incompatible, only add one",
+                type_name::<Self>(),
+                type_name::<DashboardPlugin>()
+            );
         }
     }
 }

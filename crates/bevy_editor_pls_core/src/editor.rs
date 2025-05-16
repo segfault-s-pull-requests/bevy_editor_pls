@@ -3,7 +3,7 @@ use bevy::window::WindowMode;
 use bevy::{prelude::*};
 use bevy_inspector_egui::bevy_egui::{egui, EguiContext};
 use bevy_trait_query::One;
-use egui_dock::{NodeIndex, SurfaceIndex, TabBarStyle };
+use egui_dock::{NodeIndex, SurfaceIndex, TabBarStyle};
 
 use crate::editor_window::{EditorWindow, EditorWindowContext, EditorWindowInstance};
 
@@ -44,7 +44,7 @@ impl Editor {
             active_editor_interaction: None,
             listening_for_text: false,
             window_cache: default(),
-            defined_windows: default()
+            defined_windows: default(),
         }
     }
 
@@ -191,8 +191,9 @@ impl EditorTabs {
 }
 
 impl Editor {
-    pub fn add_window<W: EditorWindow>(&mut self, w:W) {
-        self.defined_windows.insert(w.menu_name(), Box::new(w) as Box<dyn EditorWindow>);
+    pub fn add_window<W: EditorWindow>(&mut self, w: W) {
+        self.defined_windows
+            .insert(w.menu_name(), Box::new(w) as Box<dyn EditorWindow>);
     }
 }
 
@@ -307,7 +308,7 @@ impl Editor {
         internal_state.state = tree;
 
         let pointer_pos = ctx.input(|input| input.pointer.interact_pos());
-        self.pointer_used = false;//pointer_pos.map_or(false, |pos| !self.is_in_viewport(pos));
+        self.pointer_used = false; //pointer_pos.map_or(false, |pos| !self.is_in_viewport(pos));
 
         // self.editor_floating_windows(world, ctx, internal_state);
 
@@ -343,7 +344,10 @@ impl Editor {
                 }
 
                 ui.menu_button("Open window", |ui| {
-                    for (&_, window) in self.defined_windows.iter() { 
+                    let mut windows: Vec<_> = self.defined_windows.values().collect();
+                    windows.sort_by_key(|w| w.menu_name());
+
+                    for window in windows {
                         let cx = EditorWindowContext {
                             entity: Entity::PLACEHOLDER,
                             internal_state: internal_state,
@@ -394,8 +398,8 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         // the later was more drop-in
 
         if self.world.get_entity(cx.entity).is_err() {
-            error!("{} seriously fuck egui", cx.entity);
-            return
+            error!("{} >:(", cx.entity);
+            return;
         }
         self.editor.window_cache[&tab.entity].ui(self.world, cx, ui);
     }
@@ -427,7 +431,9 @@ impl egui_dock::TabViewer for TabViewer<'_> {
             entity: tab.entity,
             internal_state: self.internal_state,
         };
-        self.editor.window_cache[&tab.entity].name(self.world, cx).into()
+        self.editor.window_cache[&tab.entity]
+            .name(self.world, cx)
+            .into()
     }
 
     fn clear_background(&self, tab: &Self::Tab) -> bool {
@@ -442,7 +448,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         info!("despawning {}", tab.entity);
         self.world.despawn(tab.entity);
         true // ensure ui is NOT called again, as it will panic if it can't find it's entity
-        // XXX the documentation literally lies
+             // XXX the documentation lies
     }
 }
 

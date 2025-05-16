@@ -32,8 +32,7 @@ pub fn setup(app: &mut App) {
         })),
         ..Default::default()
     };
-    let rendergraph_settings = render_graph::settings::Settings::default();
-
+    
     let update_schedule = app.get_schedule(Update).map(|schedule| {
         schedule_graph::schedule_graph_dot(schedule, app.world(), &schedule_settings)
     });
@@ -49,6 +48,7 @@ pub fn setup(app: &mut App) {
         schedule_graph::schedule_graph_dot(schedule, app.world(), &schedule_settings)
     });
 
+    let rendergraph_settings = render_graph::settings::Settings::default();
     let render_graph = render_graph::render_graph_dot(render_graph, &rendergraph_settings);
 
     app.insert_resource(DotGraphs {
