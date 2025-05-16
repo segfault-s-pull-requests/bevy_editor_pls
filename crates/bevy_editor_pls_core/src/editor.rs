@@ -344,7 +344,10 @@ impl Editor {
                 }
 
                 ui.menu_button("Open window", |ui| {
-                    for (&_, window) in self.defined_windows.iter() {
+                    let mut windows: Vec<_> = self.defined_windows.values().collect();
+                    windows.sort_by_key(|w| w.menu_name());
+
+                    for window in windows {
                         let cx = EditorWindowContext {
                             entity: Entity::PLACEHOLDER,
                             internal_state: internal_state,
@@ -395,7 +398,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         // the later was more drop-in
 
         if self.world.get_entity(cx.entity).is_err() {
-            error!("{} seriously fuck egui", cx.entity);
+            error!("{} >:(", cx.entity);
             return;
         }
         self.editor.window_cache[&tab.entity].ui(self.world, cx, ui);
@@ -445,7 +448,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         info!("despawning {}", tab.entity);
         self.world.despawn(tab.entity);
         true // ensure ui is NOT called again, as it will panic if it can't find it's entity
-             // XXX the documentation literally lies
+             // XXX the documentation lies
     }
 }
 

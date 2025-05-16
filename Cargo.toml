@@ -28,6 +28,7 @@ bevy_metrics_dashboard = { version = "0.6", features = ["bevy_egui", "render_met
 [patch.crates-io]
 # transform-gizmo-bevy = { git = "https://github.com/ActuallyHappening/transform-gizmo" }
 bevy-inspector-egui = { path = "../bevy-inspector-egui/crates/bevy-inspector-egui" }
+egui_dock = { path = "../egui-dock/" }
 
 [profile.dev.package."*"]
 opt-level = 2

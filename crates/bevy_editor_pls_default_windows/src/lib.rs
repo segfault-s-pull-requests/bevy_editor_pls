@@ -6,10 +6,17 @@ pub mod cameras;
 pub mod debug_settings;
 pub mod diagnostics;
 pub mod gizmos;
+pub mod graph;
 pub mod hierarchy;
 pub mod inspector;
+pub mod logging;
 pub mod renderer;
 pub mod resources;
+
+pub mod utils {
+    pub mod log_plugin;
+    pub mod open;
+}
 
 #[cfg(feature = "bevy_metrics_dashboard")]
 pub mod metrics;
@@ -28,4 +35,6 @@ pub mod prelude {
 
     #[cfg(feature = "bevy_metrics_dashboard")]
     pub use crate::metrics::MetricsWindow;
+
+    pub use crate::graph::SystemGraphWindow;
 }

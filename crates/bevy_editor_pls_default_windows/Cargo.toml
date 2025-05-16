@@ -32,6 +32,25 @@ bevy_egui.workspace = true
 # ] }
 indexmap = "2"
 pretty-type-name = "1.0"
-bevy_mod_debugdump = "0.12"
-opener = "0.6.0"
+bevy_mod_debugdump = "0.12.1"
+opener = "0.6.1"
 transform-gizmo-bevy.workspace = true
+egui_graphs = "*"
+petgraph = "0.7.1"
+parking_lot = "*"
+dirs = "*"
+tracing-log = "*"
+tracing-error = "*"
+tracing-tracy = "*"
+tracing-core = { version = "*", features = ["valuable"]}
+egui_extras = "*"
+valuable = "*"
+regex = "*"
+# cargo patch should disregard semver
+# obviously
+# bastards
+
+# petgraph.workspace = true
+# dot-parser.workspace = true
+# dot-parser-macros.workspace = true
+
