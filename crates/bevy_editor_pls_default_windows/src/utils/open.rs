@@ -1,6 +1,6 @@
 use std::io::{self, BufRead};
 /// yes chatgpt wrote this shit.
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Command, Stdio};
 use std::path::{PathBuf};
 use bevy::log::tracing;
 use tracing::Metadata;

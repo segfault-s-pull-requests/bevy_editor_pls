@@ -23,7 +23,7 @@ pub enum BindingCondition {
 impl BindingCondition {
     fn evaluate(&self, editor: &Editor) -> bool {
         match *self {
-            BindingCondition::InViewport(in_viewport) => {
+            BindingCondition::InViewport(_in_viewport) => {
                 // if in_viewport {
                 //     !editor.pointer_used()
                 // } else {
@@ -207,7 +207,7 @@ pub fn editor_controls_system(
     {
         let was_active = editor.active;
         editor.set_active(!was_active);
-        editor_events.send(EditorEvent::Toggle {
+        editor_events.write(EditorEvent::Toggle {
             now_active: !was_active,
         });
     }
@@ -229,7 +229,7 @@ pub fn editor_controls_system(
         &mouse_input,
         &editor,
     ) {
-        editor_events.send(EditorEvent::FocusSelected);
+        editor_events.write(EditorEvent::FocusSelected);
     }
 
     // #[cfg(feature = "default_windows")]

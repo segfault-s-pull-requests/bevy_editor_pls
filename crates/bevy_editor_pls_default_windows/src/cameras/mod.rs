@@ -3,17 +3,14 @@ pub mod camera_3d_free;
 pub mod camera_3d_panorbit;
 // use crate::scenes::NotInScene;
 
-use std::any::type_name;
-use std::marker::PhantomData;
-
-use bevy::ecs::system::{self, SystemState};
+use bevy::ecs::system::SystemState;
 use bevy::render::camera::RenderTarget;
 use bevy::render::view::RenderLayers;
 use bevy::window::{PrimaryWindow, WindowRef};
-use bevy::{prelude::*, render::primitives::Aabb};
+use bevy::prelude::*;
 use bevy_editor_pls_core::editor::EditorTabs;
 use bevy_editor_pls_core::editor_window::EditorWindowsCollection;
-use bevy_editor_pls_core::egui_dock::{self, LeafHighlighting};
+use bevy_editor_pls_core::egui_dock::{self};
 use bevy_editor_pls_core::{set_if_neq, AddEditorWindow};
 use bevy_editor_pls_core::{
     editor_window::{EditorWindow, EditorWindowContext},
@@ -205,11 +202,11 @@ impl EditorWindow for CameraWindow {
 
             let parent = world
                 .query::<(Entity, &EditorWindowsCollection)>()
-                .get_single(&world)
+                .single(&world)
                 .map(|e| e.0)
                 .ok();
             if let Some(parent) = parent {
-                world.entity_mut(new).set_parent(parent);
+                world.entity_mut(new).insert(ChildOf(parent));
             }
         });
     }
@@ -323,7 +320,7 @@ fn set_editor_cam_active(
         .and_then(|(_, tab)| camera_tabs.get(tab.entity).ok())
         .map(|(e, w)| w.camera.unwrap_or(e));
 
-    for (camera_entity, camera, controls) in editor_cameras.iter_mut() {
+    for (camera_entity, _camera, controls) in editor_cameras.iter_mut() {
         let mut active = editor.active;
         active &= focused == Some(camera_entity);
 
@@ -559,7 +556,9 @@ fn set_camera_viewports_and_enabled(
     // set camera enabled
     for (camera_entity, mut camera) in cameras.iter_mut() {
         // ignore cameras not targeting the window of the editor
-        target_window(&camera, *primary_window) == Some(editor.window());
+        if target_window(&camera, *primary_window) == Some(editor.window()) {
+            continue;
+        }
 
         let active = active_cameras.contains(&camera_entity);
         set_if_neq!(camera.is_active, active);

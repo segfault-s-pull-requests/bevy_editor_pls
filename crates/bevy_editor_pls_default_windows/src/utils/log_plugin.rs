@@ -15,15 +15,13 @@
 
 extern crate alloc;
 
-use core::error::Error;
-
 // #[cfg(target_os = "android")]
 // mod android_tracing;
 
-#[cfg(feature = "trace_tracy_memory")]
-#[global_allocator]
-static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
-    tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
+// #[cfg(feature = "trace_tracy_memory")]
+// #[global_allocator]
+// static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
+//     tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
 
 pub use bevy::utils::once;
 pub use bevy::log::tracing_subscriber;
@@ -33,31 +31,25 @@ use bevy::{
     app::{App, Plugin},
     log::{error, tracing, Level},
 };
-use tracing_subscriber::{
-    filter::{FromEnvError, ParseError},
-    prelude::*,
-    registry::Registry,
-    EnvFilter,
-    Layer,
-};
+use tracing_subscriber::{prelude::*, registry::Registry, Layer};
 use crate::logging::TracingDynamicSubscriber;
 
-#[cfg(feature = "tracing-chrome")]
-use {
-    bevy_ecs::resource::Resource,
-    bevy_utils::synccell::SyncCell,
-    tracing_subscriber::fmt::{format::DefaultFields, FormattedFields},
-};
+// #[cfg(feature = "tracing-chrome")]
+// use {
+//     bevy_ecs::resource::Resource,
+//     bevy_utils::synccell::SyncCell,
+//     tracing_subscriber::fmt::{format::DefaultFields, FormattedFields},
+// };
 
-/// Wrapper resource for `tracing-chrome`'s flush guard.
-/// When the guard is dropped the chrome log is written to file.
-#[cfg(feature = "tracing-chrome")]
-#[expect(
-    dead_code,
-    reason = "`FlushGuard` never needs to be read, it just needs to be kept alive for the `App`'s lifetime."
-)]
-#[derive(Resource)]
-pub(crate) struct FlushGuard(SyncCell<tracing_chrome::FlushGuard>);
+// /// Wrapper resource for `tracing-chrome`'s flush guard.
+// /// When the guard is dropped the chrome log is written to file.
+// #[cfg(feature = "tracing-chrome")]
+// #[expect(
+//     dead_code,
+//     reason = "`FlushGuard` never needs to be read, it just needs to be kept alive for the `App`'s lifetime."
+// )]
+// #[derive(Resource)]
+// pub(crate) struct FlushGuard(SyncCell<tracing_chrome::FlushGuard>);
 
 /// Adds logging to Apps. This plugin is part of the `DefaultPlugins`. Adding
 /// this plugin will setup a collector appropriate to your target platform:
@@ -283,6 +275,7 @@ impl Plugin for LogPlugin {
             not(target_os = "ios")
         ))]
         {
+            /*
             #[cfg(feature = "tracing-chrome")]
             let chrome_layer = {
                 let mut layer = tracing_chrome::ChromeLayerBuilder::new();
@@ -305,10 +298,10 @@ impl Plugin for LogPlugin {
                     .build();
                 app.insert_resource(FlushGuard(SyncCell::new(guard)));
                 chrome_layer
-            };
+            };*/
 
-            #[cfg(feature = "tracing-tracy")]
-            let tracy_layer = tracing_tracy::TracyLayer::default();
+            // #[cfg(feature = "tracing-tracy")]
+            // let tracy_layer = tracing_tracy::TracyLayer::default();
 
             // note: the implementation of `Default` reads from the env var NO_COLOR
             // to decide whether to use ANSI color codes, which is common convention
@@ -325,10 +318,10 @@ impl Plugin for LogPlugin {
 
             let subscriber = subscriber.with(fmt_layer);
 
-            #[cfg(feature = "tracing-chrome")]
-            let subscriber = subscriber.with(chrome_layer);
-            #[cfg(feature = "tracing-tracy")]
-            let subscriber = subscriber.with(tracy_layer);
+            // #[cfg(feature = "tracing-chrome")]
+            // let subscriber = subscriber.with(chrome_layer);
+            // #[cfg(feature = "tracing-tracy")]
+            // let subscriber = subscriber.with(tracy_layer);
 
             let logger = TracingDynamicSubscriber::new();
             app.insert_resource(logger.clone());

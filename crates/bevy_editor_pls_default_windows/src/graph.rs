@@ -1,14 +1,11 @@
-use std::{cell::RefCell, hash::Hash, rc::Rc, sync::Arc};
+use std::{hash::Hash, sync::Arc};
 
-use bevy::{
-    prelude::*,
-    render::render_graph::{self, RenderGraph},
-};
+use bevy::prelude::*;
 use bevy_editor_pls_core::{
     editor_window::{EditorWindow, EditorWindowContext},
     AddEditorWindow,
 };
-use bevy_egui::egui::{Checkbox, Id, Ui};
+use bevy_egui::egui::{Id, Ui};
 use egui_graphs::{
     to_graph,
     DefaultEdgeShape,
@@ -49,7 +46,7 @@ impl Plugin for SystemGraphWindow {
 }
 
 impl EditorWindow for SystemGraphWindow {
-    fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut Ui) {
+    fn ui(&self, world: &mut World, _cx: EditorWindowContext, ui: &mut Ui) {
         // let rg = world.resource::<RenderGraph>();
 
         // let rendergraph_settings = bevy_mod_debugdump::render_graph::settings::Settings::default();

@@ -8,8 +8,6 @@ pub use bevy_egui::EguiPlugin;
 
 use bevy::{
     prelude::{Entity, Plugin, Update},
-    text::cosmic_text::Command,
-    transform::commands,
     window::{MonitorSelection, Window, WindowPosition, WindowRef, WindowResolution},
 };
 
@@ -17,11 +15,7 @@ use bevy_editor_pls_core::editor::EditorTabs;
 pub use bevy_editor_pls_core::egui_dock;
 #[doc(inline)]
 pub use bevy_editor_pls_core::{editor, editor_window, AddEditorWindow};
-use bevy_editor_pls_default_windows::{
-    assets::AssetsWindow,
-    logging::LoggingWindow,
-    prelude::HierarchyWindow,
-};
+use bevy_editor_pls_default_windows::logging::LoggingWindow;
 pub use egui;
 
 #[cfg(feature = "default_windows")]
@@ -141,15 +135,21 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
         .spawn((Name::new("Editor Windows"), EditorWindowsCollection))
         .id();
 
-    let h = commands.spawn(HierarchyWindow).set_parent(parent).id();
-    let r = commands.spawn(ResourcesWindow).set_parent(parent).id();
-    let a = commands.spawn(AssetsWindow).set_parent(parent).id();
-    let i = commands.spawn(InspectorWindow).set_parent(parent).id();
-    let s = commands.spawn(SceneWindow).set_parent(parent).id();
+    let h = commands.spawn(HierarchyWindow).insert(ChildOf(parent)).id();
+    let r = commands.spawn(ResourcesWindow).insert(ChildOf(parent)).id();
+    let a = commands.spawn(AssetsWindow).insert(ChildOf(parent)).id();
+    let i = commands.spawn(InspectorWindow).insert(ChildOf(parent)).id();
+    let s = commands.spawn(SceneWindow).insert(ChildOf(parent)).id();
 
-    let d1 = commands.spawn(DebugSettingsWindow).set_parent(parent).id();
-    let d2 = commands.spawn(DiagnosticsWindow).set_parent(parent).id();
-    let d3 = commands.spawn(LoggingWindow).set_parent(parent).id();
+    let d1 = commands
+        .spawn(DebugSettingsWindow)
+        .insert(ChildOf(parent))
+        .id();
+    let d2 = commands
+        .spawn(DiagnosticsWindow)
+        .insert(ChildOf(parent))
+        .id();
+    let d3 = commands.spawn(LoggingWindow).insert(ChildOf(parent)).id();
 
     let c = commands
         .spawn((

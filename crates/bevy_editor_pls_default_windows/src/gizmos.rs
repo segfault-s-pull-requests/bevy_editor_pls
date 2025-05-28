@@ -1,21 +1,13 @@
-use bevy::{
-    ecs::{query::QueryFilter, system::RunSystemOnce},
-    prelude::*,
-    render::view::RenderLayers,
-};
+use bevy::{ecs::query::QueryFilter, prelude::*, render::view::RenderLayers};
 
 use bevy_editor_pls_core::{
     editor_window::{EditorWindow, EditorWindowContext},
     AddEditorWindow,
 };
 use bevy_inspector_egui::egui;
-use transform_gizmo_bevy::GizmoTarget;
 use transform_gizmo_bevy::{EnumSet, GizmoMode};
 
-use crate::{
-    cameras::{EditorCamera, EDITOR_RENDER_LAYER},
-    hierarchy::HierarchyWindow,
-};
+use crate::cameras::{EditorCamera, EDITOR_RENDER_LAYER};
 
 #[derive(Debug, Clone, Component)]
 pub struct GizmoState {

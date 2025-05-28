@@ -3,13 +3,11 @@ pub mod editor;
 /// Trait definition for new editor windows
 pub mod editor_window;
 
-use std::marker::PhantomData;
-
 use bevy::prelude::*;
 use bevy::render::camera::CameraUpdateSystem;
 use bevy::transform::TransformSystem;
 use bevy::window::{PrimaryWindow, WindowRef};
-use bevy_inspector_egui::bevy_egui::{EguiContextPass, EguiPostUpdateSet};
+use bevy_inspector_egui::bevy_egui::EguiPostUpdateSet;
 use bevy_inspector_egui::{
     bevy_egui::{EguiPlugin},
     DefaultInspectorConfigPlugin,
