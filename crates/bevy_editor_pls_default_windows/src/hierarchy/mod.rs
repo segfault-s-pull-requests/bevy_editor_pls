@@ -121,7 +121,7 @@ fn extract_wireframe_for_selected(
             let selected = &state.selected;
             for selected in selected.iter() {
                 if let Ok(r_id) = query.get(selected) {
-                    if let Some(mut entity) = commands.get_entity(r_id) {
+                    if let Ok(mut entity) = commands.get_entity(r_id) {
                         entity.insert(Wireframe);
                     }
                 }
@@ -208,16 +208,18 @@ impl Hierarchy<'_> {
         .show::<Without<HideInEditor>>(ui);
 
         if let Some(entity) = despawn_recursive {
-            bevy::hierarchy::despawn_with_children_recursive(self.world, entity, true);
+            self.world.entity_mut(entity).despawn();
         }
         if let Some(entity) = despawn {
-            self.world.entity_mut(entity).despawn();
+            let mut e = self.world.entity_mut(entity);
+            e.remove::<Children>();
+            e.despawn();
             self.state.selected.remove(entity);
         }
 
         if ui.input(|input| input.key_pressed(egui::Key::Delete)) {
             for entity in self.state.selected.iter() {
-                self.world.entity_mut(entity).despawn_recursive();
+                self.world.entity_mut(entity).despawn();
             }
             self.state.selected.clear();
         }

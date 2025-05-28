@@ -1,4 +1,4 @@
-use bevy::{prelude::*, utils::HashMap};
+use bevy::{prelude::*, platform::collections::hash_map::HashMap};
 use bevy_editor_pls_core::{editor_window::EditorWindow, Editor, EditorEvent};
 
 #[derive(Debug)]
@@ -24,11 +24,12 @@ impl BindingCondition {
     fn evaluate(&self, editor: &Editor) -> bool {
         match *self {
             BindingCondition::InViewport(in_viewport) => {
-                if in_viewport {
-                    !editor.pointer_used()
-                } else {
-                    editor.pointer_used()
-                }
+                // if in_viewport {
+                //     !editor.pointer_used()
+                // } else {
+                //     editor.pointer_used()
+                // }
+                unimplemented!()
             }
             BindingCondition::EditorActive(editor_active) => editor_active == editor.active,
             BindingCondition::ListeningForText(listening) => {

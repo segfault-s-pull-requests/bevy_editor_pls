@@ -1,8 +1,7 @@
 use bevy::ecs::bundle::DynamicBundle;
 use bevy::ecs::change_detection::MutUntyped;
-use bevy::ecs::component::Component;
+use bevy::ecs::component::{Component, Mutable};
 use bevy::ecs::entity::Entity;
-use bevy::ecs::system::Resource;
 use bevy::ecs::world::{Mut, Ref};
 use bevy::prelude::*;
 use bevy::ptr::{Aligned, OwningPtr};
@@ -126,7 +125,10 @@ impl EditorWindowContext<'_> {
         None
     }
 
-    pub fn get_mut<'a, M: Component>(&self, mut world: &'a mut World) -> Option<Mut<'a, M>> {
+    pub fn get_mut<'a, M: Component<Mutability = Mutable>>(
+        &self,
+        mut world: &'a mut World,
+    ) -> Option<Mut<'a, M>> {
         // dealing with borrow checker false positive
         // see: https://docs.rs/polonius-the-crab/latest/polonius_the_crab/index.html
         polonius!(|world| -> Option<Mut<'polonius, M>> {

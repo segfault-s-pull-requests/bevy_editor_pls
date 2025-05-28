@@ -31,8 +31,7 @@ use tracing_log::LogTracer;
 
 use bevy::{
     app::{App, Plugin},
-    log::{error, Level},
-    utils::tracing::{self, subscriber},
+    log::{error, tracing, Level},
 };
 use tracing_subscriber::{
     filter::{FromEnvError, ParseError},

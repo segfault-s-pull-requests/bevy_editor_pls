@@ -125,7 +125,7 @@ impl Plugin for GizmosWindow {
         app.add_editor_window::<Self>();
 
         if !app.is_plugin_added::<bevy::pbr::wireframe::WireframePlugin>() {
-            app.add_plugins(bevy::pbr::wireframe::WireframePlugin);
+            app.add_plugins(bevy::pbr::wireframe::WireframePlugin::default());
         }
         if !app.is_plugin_added::<transform_gizmo_bevy::TransformGizmoPlugin>() {
             app.add_plugins(transform_gizmo_bevy::TransformGizmoPlugin);

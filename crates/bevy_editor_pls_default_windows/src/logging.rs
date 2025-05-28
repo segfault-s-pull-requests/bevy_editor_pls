@@ -4,26 +4,23 @@ use std::{collections::HashMap, env, sync::Arc};
 /// Eventually it should be possible to select a component of an entity and, within the ui,
 /// understand everything about how that component, on that entity, is being controlled, and controling
 use bevy::{
-    log::tracing_subscriber::{
-        self,
-        filter::Targets,
-        fmt::format,
-        layer::{Filter, SubscriberExt},
-        registry,
-        reload::{self, Handle},
-        EnvFilter,
-        Layer,
-        Registry,
+    log::{
+        tracing,
+        tracing_subscriber::{
+            self,
+            filter::Targets,
+            fmt::format,
+            layer::{Filter, SubscriberExt},
+            registry,
+            reload::{self, Handle},
+            EnvFilter,
+            Layer,
+            Registry,
+        },
     },
     prelude::*,
-    utils::tracing::{
-        level_filters::LevelFilter,
-        span,
-        subscriber::Interest,
-        Metadata,
-        Subscriber,
-    },
 };
+use tracing::{level_filters::LevelFilter, span, subscriber::Interest, Metadata, Subscriber};
 use bevy_editor_pls_core::{
     editor_window::{EditorWindow, EditorWindowContext},
     AddEditorWindow,
@@ -110,6 +107,26 @@ impl EditorWindow for LoggingWindow {
 
         let id = ui.auto_id_with("select");
         let mut selected = ui.data_mut(|d| d.get_temp::<Identifier>(id));
+
+        if let Some(k) = selected.clone() {
+            let _ = SidePanel::right("info")
+                .resizable(true)
+                .show_inside(ui, |ui| {
+                    MetadataWidget(logs[&k]).ui(ui);
+                    let extra = sub.extra.read().get(&k).cloned();
+                    let registry = world.resource::<AppTypeRegistry>();
+
+                    // TODO refactor this to no use
+                    bevy_inspector_egui::reflect_inspector::ui_for_value_readonly(
+                        extra.as_reflect(),
+                        ui,
+                        &registry.read(),
+                    );
+                })
+                .response;
+            // .interact(Sense::all()); // prevents input passing through to table underneath
+            // actually somehow it breaks the button
+        }
 
         CentralPanel::default().show_inside(ui, |ui| {
             ui.horizontal(|ui| {
@@ -400,25 +417,6 @@ impl EditorWindow for LoggingWindow {
         if selected.is_some() {
             ui.data_mut(|d| d.insert_temp::<Identifier>(id, selected.clone().unwrap()));
         }
-
-        if let Some(k) = selected {
-            let _ = SidePanel::right("info")
-                .resizable(true)
-                .show_inside(ui, |ui| {
-                    MetadataWidget(logs[&k]).ui(ui);
-                    let extra = sub.extra.read().get(&k).cloned();
-                    let registry = world.resource::<AppTypeRegistry>();
-
-                    // TODO refactor this to no use
-                    bevy_inspector_egui::reflect_inspector::ui_for_value_readonly(
-                        extra.as_reflect(),
-                        ui,
-                        &registry.read(),
-                    );
-                })
-                .response
-                .interact(Sense::all()); // prevents input passing through to table underneath
-        }
     }
 }
 
@@ -447,7 +445,6 @@ impl Structable for EntityLog {
     }
 }
 
-use bevy::utils::tracing;
 use bevy_inspector_egui::dropdown::DropDownBox;
 use egui_extras::{Column, TableBuilder};
 use parking_lot::RwLock;
@@ -487,8 +484,8 @@ pub struct RetainedLog {}
 impl<S: Subscriber> Layer<S> for TracingDynamicSubscriber {
     fn register_callsite(
         &self,
-        metadata: &'static bevy::utils::tracing::Metadata<'static>,
-    ) -> bevy::utils::tracing::subscriber::Interest {
+        metadata: &'static tracing::Metadata<'static>,
+    ) -> tracing::subscriber::Interest {
         self.callsights
             .write()
             .insert(metadata.callsite(), metadata);

@@ -15,20 +15,20 @@ bevy_editor_pls = { version = "0.11.0", path = "crates/bevy_editor_pls" }
 bevy_editor_pls_core = { version = "0.11.0", path = "crates/bevy_editor_pls_core" }
 bevy_editor_pls_default_windows = { version = "0.11.0", path = "crates/bevy_editor_pls_default_windows" }
 
-bevy-inspector-egui = "0.30.0"
-bevy_egui = "*"
+bevy-inspector-egui = "0.31.0"
+bevy_egui = "0.34.1"
 egui = "0.31.1"
 egui_dock = { version = "0.16.0", features = [ "serde" ] }
-transform-gizmo-bevy = "0.5"
+transform-gizmo-bevy = "0.6.0"
 
-bevy-trait-query = "0.7.0"
+bevy-trait-query = "0.16.0"
 dyn-clone = "1.0"
-bevy_metrics_dashboard = { version = "0.6", features = ["bevy_egui", "render_metrics"]}
+bevy_metrics_dashboard = { version = "0.7.1", features = ["bevy_egui", "render_metrics"]}
 
 [patch.crates-io]
 # transform-gizmo-bevy = { git = "https://github.com/ActuallyHappening/transform-gizmo" }
-bevy-inspector-egui = { path = "../bevy-inspector-egui/crates/bevy-inspector-egui" }
-egui_dock = { path = "../egui-dock/" }
+bevy-inspector-egui = { path = "forks/bevy-inspector-egui/crates/bevy-inspector-egui" }
+egui_dock = { path = "forks/egui-dock/" }
 
 [profile.dev.package."*"]
 opt-level = 2

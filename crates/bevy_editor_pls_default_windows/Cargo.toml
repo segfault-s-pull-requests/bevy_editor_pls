@@ -12,7 +12,7 @@ bevy_metrics_dashboard = ["dep:bevy_metrics_dashboard"]
 default = [ "bevy_metrics_dashboard", "bevy-inspector-egui/highlight_changes" ]
 
 [dependencies]
-bevy = { version = "0.15", default-features = false, features = [
+bevy = { version = "0.16.0", default-features = false, features = [
     "bevy_scene",
     "bevy_text",
     "bevy_ui",
@@ -32,11 +32,11 @@ bevy_egui.workspace = true
 # ] }
 indexmap = "2"
 pretty-type-name = "1.0"
-bevy_mod_debugdump = "0.12.1"
-opener = "0.6.1"
+bevy_mod_debugdump = "0.13.0"
+opener = "0.8.1"
 transform-gizmo-bevy.workspace = true
-egui_graphs = "*"
-petgraph = "0.7.1"
+egui_graphs = "0.25.1"
+petgraph = "0.8.1"
 parking_lot = "*"
 dirs = "*"
 tracing-log = "*"

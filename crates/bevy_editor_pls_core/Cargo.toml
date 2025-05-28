@@ -8,7 +8,7 @@ description.workspace = true
 readme.workspace = true
 
 [dependencies]
-bevy = { version = "0.15", default-features = false, features = [
+bevy = { version = "0.16.0", default-features = false, features = [
     "bevy_window",
 ] }
 bevy-inspector-egui.workspace = true

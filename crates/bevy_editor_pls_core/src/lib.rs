@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy::render::camera::CameraUpdateSystem;
 use bevy::transform::TransformSystem;
 use bevy::window::{PrimaryWindow, WindowRef};
-use bevy_inspector_egui::bevy_egui::EguiPostUpdateSet;
+use bevy_inspector_egui::bevy_egui::{EguiContextPass, EguiPostUpdateSet};
 use bevy_inspector_egui::{
     bevy_egui::{EguiPlugin},
     DefaultInspectorConfigPlugin,
@@ -56,16 +56,15 @@ impl Plugin for EditorPlugin {
         if !app.is_plugin_added::<DefaultInspectorConfigPlugin>() {
             app.add_plugins(DefaultInspectorConfigPlugin);
         }
-        if !app.is_plugin_added::<EguiPlugin>() {
-            app.add_plugins(EguiPlugin);
-        }
+        assert!(app.is_plugin_added::<EguiPlugin>());
 
         let (window_entity, always_active) = match self.window {
             WindowRef::Primary => {
                 let entity = app
                     .world_mut()
                     .query_filtered::<Entity, With<PrimaryWindow>>()
-                    .single(app.world());
+                    .single(app.world())
+                    .unwrap();
                 (entity, false)
             }
             WindowRef::Entity(entity) => (entity, true),
@@ -75,6 +74,7 @@ impl Plugin for EditorPlugin {
             .init_resource::<EditorTabs>()
             .add_event::<EditorEvent>()
             .configure_sets(PostUpdate, EditorSet::UI)
+            // .configure_sets(EguiContextPass, EditorSet::UI) // TODO caused issue where closed tabs were instead reparented to first leaf, required for multipass
             .add_systems(
                 Update,
                 Editor::system
