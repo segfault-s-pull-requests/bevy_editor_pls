@@ -1,6 +1,6 @@
 use std::io::{self, BufRead};
 /// yes chatgpt wrote this shit.
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::path::{PathBuf};
 use bevy::log::tracing;
 use tracing::Metadata;
@@ -91,6 +91,10 @@ fn open_in_editor(path: &PathBuf, line: u32) -> std::io::Result<()> {
     let fallback = Command::new("open").arg(path).status();
     #[cfg(target_os = "linux")]
     let fallback = Command::new("xdg-open").arg(path).status();
+
+    // TODO actually handle this
+    #[cfg(target_arch = "wasm32")]
+    let fallback = Command::new("TODO").arg(path).status();
 
     fallback.map(|_| ())
 }

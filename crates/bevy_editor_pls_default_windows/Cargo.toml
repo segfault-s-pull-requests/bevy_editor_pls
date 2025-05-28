@@ -54,3 +54,5 @@ regex = "*"
 # dot-parser.workspace = true
 # dot-parser-macros.workspace = true
 
+[target.wasm32-unknown-unknown.dependencies]
+tracing-wasm = "*"
