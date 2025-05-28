@@ -54,7 +54,8 @@ pub struct LoggingWindow;
 
 impl EditorWindow for LoggingWindow {
     fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut Ui) {
-        trace!(window = EntityLog(cx.entity).as_value(), "test");
+        // disabling this because tracing Valueable support requires tracing-unstable cfg attr
+        // trace!(window = EntityLog(cx.entity).as_value(), "test");
 
         let lineheight = default_line_height(ui);
 
@@ -581,9 +582,9 @@ impl<S: Subscriber> Layer<S> for TracingDynamicSubscriber {
         struct TestVisitor;
         impl tracing::field::Visit for TestVisitor {
             fn record_debug(&mut self, field: &tracing_core::Field, value: &dyn std::fmt::Debug) {}
-            fn record_value(&mut self, field: &tracing_core::Field, value: valuable::Value<'_>) {
-                value.visit(&mut TestVisitor);
-            }
+            // fn record_value(&mut self, field: &tracing_core::Field, value: valuable::Value<'_>) {
+            //     value.visit(&mut TestVisitor);
+            // }
         }
         impl valuable::Visit for TestVisitor {
             fn visit_value(&mut self, value: valuable::Value<'_>) {
