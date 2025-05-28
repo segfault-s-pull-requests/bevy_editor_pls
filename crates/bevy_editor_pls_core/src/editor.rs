@@ -1,7 +1,7 @@
-use bevy::utils::hashbrown::{HashMap, HashSet};
+use bevy::platform::collections::{HashMap, HashSet};
 use bevy::window::WindowMode;
 use bevy::{prelude::*};
-use bevy_inspector_egui::bevy_egui::{egui, EguiContext};
+use bevy_inspector_egui::bevy_egui::{egui, EguiContext, EguiContextSettings};
 use bevy_trait_query::One;
 use egui_dock::{NodeIndex, SurfaceIndex, TabBarStyle};
 
@@ -27,8 +27,8 @@ pub struct Editor {
 
     pub active: bool,
 
-    pointer_used: bool,
-    active_editor_interaction: Option<ActiveEditorInteraction>,
+    // pointer_used: bool,
+    // active_editor_interaction: Option<ActiveEditorInteraction>,
     listening_for_text: bool,
     window_cache: HashMap<Entity, Box<dyn EditorWindow>>,
     defined_windows: HashMap<String, Box<dyn EditorWindow>>,
@@ -40,8 +40,8 @@ impl Editor {
             always_active,
 
             active: always_active,
-            pointer_used: false,
-            active_editor_interaction: None,
+            // pointer_used: false,
+            // active_editor_interaction: None,
             listening_for_text: false,
             window_cache: default(),
             defined_windows: default(),
@@ -68,25 +68,25 @@ impl Editor {
     //     self.viewport.contains(pos)
     // }
 
-    pub fn pointer_used(&self) -> bool {
-        self.pointer_used
-            || matches!(
-                self.active_editor_interaction,
-                Some(ActiveEditorInteraction::Editor)
-            )
-    }
+    // pub fn pointer_used(&self) -> bool {
+    //     self.pointer_used
+    //         || matches!(
+    //             self.active_editor_interaction,
+    //             Some(ActiveEditorInteraction::Editor)
+    //         )
+    // }
 
     pub fn listening_for_text(&self) -> bool {
         self.listening_for_text
     }
 
-    pub fn viewport_interaction_active(&self) -> bool {
-        !self.pointer_used
-            || matches!(
-                self.active_editor_interaction,
-                Some(ActiveEditorInteraction::Viewport)
-            )
-    }
+    // pub fn viewport_interaction_active(&self) -> bool {
+    //     !self.pointer_used
+    //         || matches!(
+    //             self.active_editor_interaction,
+    //             Some(ActiveEditorInteraction::Viewport)
+    //         )
+    // }
 }
 
 // pub(crate) type UiFn =
@@ -200,13 +200,16 @@ impl Editor {
 impl Editor {
     pub(crate) fn system(world: &mut World) {
         world.resource_scope(|world, mut editor: Mut<Editor>| {
-            let Ok(mut egui_context) = world
-                .query::<&mut EguiContext>()
+            let Ok((mut egui_context, mut egui_settings)) = world
+                .query::<(&mut EguiContext, &mut EguiContextSettings)>()
                 .get_mut(world, editor.on_window)
             else {
                 return;
             };
             let egui_context = egui_context.get_mut().clone();
+
+            //XXX This prevents egui from taking picking. idk how it worked before, maybe bevy_egui hadn't added picking yet.
+            egui_settings.capture_pointer_input = false;
 
             world.resource_scope(|world, mut editor_internal_state: Mut<EditorTabs>| {
                 // TODO move to own system or observer or hook
@@ -280,7 +283,7 @@ impl Editor {
 
         if !self.active {
             // self.editor_floating_windows(world, ctx, internal_state);
-            self.pointer_used = ctx.wants_pointer_input();
+            // self.pointer_used = ctx.wants_pointer_input();
             return;
         }
 
@@ -307,24 +310,24 @@ impl Editor {
             );
         internal_state.state = tree;
 
-        let pointer_pos = ctx.input(|input| input.pointer.interact_pos());
-        self.pointer_used = false; //pointer_pos.map_or(false, |pos| !self.is_in_viewport(pos));
+        // let pointer_pos = ctx.input(|input| input.pointer.interact_pos());
+        // self.pointer_used = false; //pointer_pos.map_or(false, |pos| !self.is_in_viewport(pos));
 
         // self.editor_floating_windows(world, ctx, internal_state);
 
         self.listening_for_text = ctx.wants_keyboard_input();
 
-        let is_pressed = ctx.input(|input| input.pointer.press_start_time().is_some());
-        match (&self.active_editor_interaction, is_pressed) {
-            (_, false) => self.active_editor_interaction = None,
-            (None, true) => {
-                self.active_editor_interaction = Some(match self.pointer_used {
-                    true => ActiveEditorInteraction::Editor,
-                    false => ActiveEditorInteraction::Viewport,
-                });
-            }
-            (Some(_), true) => {}
-        }
+        // let is_pressed = ctx.input(|input| input.pointer.press_start_time().is_some());
+        // match (&self.active_editor_interaction, is_pressed) {
+        //     (_, false) => self.active_editor_interaction = None,
+        //     (None, true) => {
+        //         self.active_editor_interaction = Some(match self.pointer_used {
+        //             true => ActiveEditorInteraction::Editor,
+        //             false => ActiveEditorInteraction::Viewport,
+        //         });
+        //     }
+        //     (Some(_), true) => {}
+        // }
     }
 
     fn editor_menu_bar(
@@ -421,7 +424,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
             //         initial_position: None,
             //     });
             // }
-
+            warn!("unimplemented");
             ui.close_menu();
         }
     }

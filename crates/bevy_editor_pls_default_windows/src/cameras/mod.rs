@@ -9,7 +9,6 @@ use std::marker::PhantomData;
 use bevy::ecs::system::{self, SystemState};
 use bevy::render::camera::RenderTarget;
 use bevy::render::view::RenderLayers;
-use bevy::utils::HashSet;
 use bevy::window::{PrimaryWindow, WindowRef};
 use bevy::{prelude::*, render::primitives::Aabb};
 use bevy_editor_pls_core::editor::EditorTabs;
@@ -121,9 +120,13 @@ impl EditorWindow for CameraWindow {
         }
 
         ui.horizontal(|ui| {
-            // Untested, because I just use cameras fixed to the CameraWindow, plus gameview
+            // copied from https://github.com/jakobhellermann/bevy_editor_pls/blob/1d640f0ff62be4a021393757b05ea77089384b0e/crates/bevy_editor_pls_core/src/editor.rs#L523-L525
+            ui.style_mut().spacing.button_padding = egui::vec2(2.0, 0.0);
+            let height = ui.spacing().interact_size.y;
+            ui.set_min_size(egui::vec2(ui.available_width(), height));
+
             if true {
-                //window.camera.is_some() {
+                //window.camera.is_some() { // //only allow selection if window isn't itself a camera
                 let namer = |name: Option<&Name>, entity: Entity| {
                     format!(
                         "{} {}",
@@ -135,7 +138,6 @@ impl EditorWindow for CameraWindow {
                 ui.menu_button(name, |ui| {
                     for camera in cameras.iter() {
                         if ui.button(namer(camera.2, camera.0)).clicked() {
-                            // TODO I have no idea what this might break in the editor toggle / camera viewport / is_active logic
                             let mut new = window.clone();
                             new.camera = Some(camera.0);
                             commands.entity(cx.entity).insert(new);
@@ -150,7 +152,7 @@ impl EditorWindow for CameraWindow {
 
             // menu to select controls
             ui.menu_button(camera_control_type, |ui| {
-                if ui.button(PanOrbitCamera::NAME).clicked(){
+                if ui.button(PanOrbitCamera::NAME).clicked() {
                     commands
                         .entity(camera_entity)
                         .reenable::<PanOrbitCamera>(Some(default()))
@@ -158,7 +160,7 @@ impl EditorWindow for CameraWindow {
                         .disable::<FlycamControls>(true);
                     ui.close_menu();
                 }
-                if ui.button(FlycamControls::NAME).clicked(){
+                if ui.button(FlycamControls::NAME).clicked() {
                     commands
                         .entity(camera_entity)
                         .reenable::<FlycamControls>(Some(default()))
@@ -167,7 +169,7 @@ impl EditorWindow for CameraWindow {
                     ui.close_menu();
                 }
                 //TODO 2d controls and cameras should be handled specially
-                if ui.button(PanCamControls::NAME).clicked(){
+                if ui.button(PanCamControls::NAME).clicked() {
                     commands
                         .entity(camera_entity)
                         .reenable::<PanCamControls>(Some(default()))
@@ -175,7 +177,7 @@ impl EditorWindow for CameraWindow {
                         .disable::<PanOrbitCamera>(true);
                     ui.close_menu();
                 }
-                if ui.button("disable").clicked(){
+                if ui.button("disable").clicked() {
                     commands
                         .entity(camera_entity)
                         .disable::<PanCamControls>(true)

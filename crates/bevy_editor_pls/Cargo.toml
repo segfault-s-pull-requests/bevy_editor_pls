@@ -22,15 +22,16 @@ default = ["default_windows"]
 [dependencies]
 bevy_editor_pls_core.workspace = true
 bevy_editor_pls_default_windows = { workspace = true, optional = true }
-bevy = { version = "0.15", default-features = false, features = ["x11"] }
-dyn-clone = "1.0"
+bevy = { version = "0.16.0", default-features = false, features = ["x11"] }
+bevy_egui.workspace = true
+dyn-clone.workspace = true
 egui.workspace = true
 transform-gizmo-bevy.workspace = true
 # bevy_framepace = { version = "0.12", default-features = false }
 
 [dev-dependencies]
 accesskit = "0.17.1"
-bevy = { version = "0.15", default-features = false, features = [
+bevy = { version = "0.16.0", default-features = false, features = [
     "bevy_winit",
     "bevy_ui",
     "bevy_core_pipeline",
@@ -42,7 +43,3 @@ bevy = { version = "0.15", default-features = false, features = [
     "zstd",
     "ktx2",             # https://github.com/bevyengine/bevy/discussions/9100
 ] }
-
-[[example]]
-name = "load_gltf"
-required-features = ["bevy/bevy_gltf", "bevy/png", "bevy/ktx2", "bevy/zstd"]

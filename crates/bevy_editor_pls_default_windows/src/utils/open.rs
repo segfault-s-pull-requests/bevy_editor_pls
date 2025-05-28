@@ -2,7 +2,7 @@ use std::io::{self, BufRead};
 /// yes chatgpt wrote this shit.
 use std::process::{Command, Stdio};
 use std::path::{PathBuf};
-use bevy::utils::tracing;
+use bevy::log::tracing;
 use tracing::Metadata;
 
 /// Tries to open the file and line number from a `tracing::Metadata`

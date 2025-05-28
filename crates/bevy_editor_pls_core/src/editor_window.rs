@@ -1,8 +1,7 @@
 use bevy::ecs::bundle::DynamicBundle;
 use bevy::ecs::change_detection::MutUntyped;
-use bevy::ecs::component::Component;
+use bevy::ecs::component::{Component, Mutable};
 use bevy::ecs::entity::Entity;
-use bevy::ecs::system::Resource;
 use bevy::ecs::world::{Mut, Ref};
 use bevy::prelude::*;
 use bevy::ptr::{Aligned, OwningPtr};
@@ -25,12 +24,24 @@ pub struct EditorWindowInstance;
 #[bevy_trait_query::queryable]
 pub trait EditorWindow: 'static + Send + Sync + dyn_clone::DynClone {
     fn name(&self, world: &mut World, cx: EditorWindowContext) -> String {
-        std::any::type_name::<Self>().trim_end_matches("Window").trim_end_matches("::").split("::").last().expect("split should never be empty").to_string()
+        std::any::type_name::<Self>()
+            .trim_end_matches("Window")
+            .trim_end_matches("::")
+            .split("::")
+            .last()
+            .expect("split should never be empty")
+            .to_string()
     }
 
     // TODO I don't like this. Menu stuff could be it's own trait
     fn menu_name(&self) -> String {
-        std::any::type_name::<Self>().trim_end_matches("Window").trim_end_matches("::").split("::").last().expect("split should never be empty").to_string()
+        std::any::type_name::<Self>()
+            .trim_end_matches("Window")
+            .trim_end_matches("::")
+            .split("::")
+            .last()
+            .expect("split should never be empty")
+            .to_string()
     }
 
     fn default_size(&self) -> (f32, f32) {
@@ -40,18 +51,20 @@ pub trait EditorWindow: 'static + Send + Sync + dyn_clone::DynClone {
     fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui);
 
     /// Ui shown in the `Open Window` menu item. By default opens the window as a floating window.
-    fn menu_ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui){
+    fn menu_ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
         let _ = world;
 
         if ui.button(self.menu_name()).clicked() {
-            
             self.spawn(world);
         }
     }
 
-    fn spawn(&self, world: &mut World){
+    fn spawn(&self, world: &mut World) {
         let Some(id) = world.components().get_id(TypeId::of::<Self>()) else {
-            error!("EditorWindow {} doesn't implement Component.", std::any::type_name::<Self>());
+            error!(
+                "EditorWindow {} doesn't implement Component.",
+                std::any::type_name::<Self>()
+            );
             return;
         };
         let data = dyn_clone::clone_box(self);
@@ -60,9 +73,10 @@ pub trait EditorWindow: 'static + Send + Sync + dyn_clone::DynClone {
         // https://discord.com/channels/691052431525675048/742569353878437978/1371946114554658817
 
         unsafe {
-            let data : *mut Self = Box::into_raw(data);
-            let data : *mut ManuallyDrop<Self> = data as *mut ManuallyDrop<Self>; // to only free the box, not the recursive contents.
-            let ptr : OwningPtr<'_, Aligned> = OwningPtr::new(NonNull::new_unchecked(<*mut _>::cast(data)));
+            let data: *mut Self = Box::into_raw(data);
+            let data: *mut ManuallyDrop<Self> = data as *mut ManuallyDrop<Self>; // to only free the box, not the recursive contents.
+            let ptr: OwningPtr<'_, Aligned> =
+                OwningPtr::new(NonNull::new_unchecked(<*mut _>::cast(data)));
             world.spawn_empty().insert_by_id(id, ptr);
             drop(Box::from_raw(data)) // frees the box without dropping the contents (which insert_by_id  has moved into ECS)
         }
@@ -111,7 +125,10 @@ impl EditorWindowContext<'_> {
         None
     }
 
-    pub fn get_mut<'a, M: Component>(&self, mut world: &'a mut World) -> Option<Mut<'a, M>> {
+    pub fn get_mut<'a, M: Component<Mutability = Mutable>>(
+        &self,
+        mut world: &'a mut World,
+    ) -> Option<Mut<'a, M>> {
         // dealing with borrow checker false positive
         // see: https://docs.rs/polonius-the-crab/latest/polonius_the_crab/index.html
         polonius!(|world| -> Option<Mut<'polonius, M>> {

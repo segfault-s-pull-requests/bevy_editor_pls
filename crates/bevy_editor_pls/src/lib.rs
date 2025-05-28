@@ -4,6 +4,8 @@
 #[cfg(feature = "default_windows")]
 pub mod controls;
 
+pub use bevy_egui::EguiPlugin;
+
 use bevy::{
     prelude::{Entity, Plugin, Update},
     text::cosmic_text::Command,
@@ -126,6 +128,7 @@ impl Plugin for EditorPlugin {
         app.add_plugins(LoggingWindow);
         app.add_plugins(SystemGraphWindow::default());
         app.add_plugins(GizmosWindow);
+        app.add_plugins(SceneWindow);
     }
 }
 
@@ -142,9 +145,11 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
     let r = commands.spawn(ResourcesWindow).set_parent(parent).id();
     let a = commands.spawn(AssetsWindow).set_parent(parent).id();
     let i = commands.spawn(InspectorWindow).set_parent(parent).id();
+    let s = commands.spawn(SceneWindow).set_parent(parent).id();
 
     let d1 = commands.spawn(DebugSettingsWindow).set_parent(parent).id();
     let d2 = commands.spawn(DiagnosticsWindow).set_parent(parent).id();
+    let d3 = commands.spawn(LoggingWindow).set_parent(parent).id();
 
     let c = commands
         .spawn((
@@ -157,6 +162,7 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
     tree.state.push_to_first_leaf(h.into());
     tree.state.push_to_first_leaf(r.into());
     tree.state.push_to_first_leaf(a.into());
+    tree.state.push_to_first_leaf(s.into());
 
     // I am not a fan of egui_dock
     // this is just to focus on the hierarchy
@@ -180,7 +186,7 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
         (0.into(), right),
         egui_dock::Split::Below,
         0.8,
-        egui_dock::Node::leaf_with(vec![d1.into(), d2.into()]),
+        egui_dock::Node::leaf_with(vec![d1.into(), d2.into(), d3.into()]),
     );
 
     if let egui_dock::Node::Leaf { collapsed, .. } = &mut tree.state.main_surface_mut()[bottom] {

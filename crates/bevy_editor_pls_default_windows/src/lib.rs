@@ -20,7 +20,7 @@ pub mod utils {
 
 #[cfg(feature = "bevy_metrics_dashboard")]
 pub mod metrics;
-// pub mod scenes;
+pub mod scenes;
 
 pub mod prelude {
     pub use crate::assets::AssetsWindow;
@@ -32,6 +32,7 @@ pub mod prelude {
     pub use crate::inspector::InspectorWindow;
     pub use crate::renderer::RendererWindow;
     pub use crate::resources::ResourcesWindow;
+    pub use crate::scenes::SceneWindow;
 
     #[cfg(feature = "bevy_metrics_dashboard")]
     pub use crate::metrics::MetricsWindow;

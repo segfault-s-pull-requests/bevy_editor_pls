@@ -22,7 +22,7 @@ use bevy_metrics_dashboard::{
 
 /// wraps the bevy_metrics_dashboard DashboardWindow
 #[derive(Debug, Clone, Default, Component)]
-#[require(DashboardWindow(|| DashboardWindow::new("Metrics")))]
+#[require(DashboardWindow = DashboardWindow::new("Metrics"))]
 pub struct MetricsWindow;
 impl EditorWindow for MetricsWindow {
     fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {

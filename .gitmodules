@@ -1,0 +1,6 @@
+[submodule "forks/bevy-inspector-egui"]
+	path = forks/bevy-inspector-egui
+	url = git@github.com:segfault-s-pull-requests/bevy-inspector-egui.git
+[submodule "forks/egui-dock"]
+	path = forks/egui-dock
+	url = git@github.com:segfault-s-pull-requests/egui_dock.git
