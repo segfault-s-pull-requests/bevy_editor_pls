@@ -11,7 +11,7 @@ use bevy_egui::egui;
 pub struct SceneWindow;
 
 impl EditorWindow for SceneWindow {
-    fn ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
+    fn ui(&self, _world: &mut World, _cx: EditorWindowContext, _ui: &mut egui::Ui) {
         // ui_for_scenes(world, ui);
         warn_once!("unimplemented");
     }

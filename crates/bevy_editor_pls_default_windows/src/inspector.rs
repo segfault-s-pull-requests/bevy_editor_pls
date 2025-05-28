@@ -3,14 +3,11 @@ use std::any::TypeId;
 use crate::hierarchy::HierarchyState;
 
 // use super::add::{AddWindow, AddWindowState};
-use super::hierarchy::HierarchyWindow;
 use bevy::app::Plugin;
 use bevy::asset::UntypedAssetId;
 use bevy::ecs::component::Component;
-use bevy::ecs::entity::Entities;
-use bevy::ecs::reflect;
-use bevy::prelude::{AppTypeRegistry, Entity, World};
-use bevy::reflect::{Reflect, TypePath, TypeRegistry};
+use bevy::prelude::{AppTypeRegistry, World};
+use bevy::reflect::{TypePath, TypeRegistry};
 use bevy_editor_pls_core::editor_window::{DefaultLink, EditorWindow, EditorWindowContext, Link};
 use bevy_editor_pls_core::AddEditorWindow;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;

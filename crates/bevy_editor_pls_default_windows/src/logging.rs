@@ -9,13 +9,8 @@ use bevy::{
         tracing_subscriber::{
             self,
             filter::Targets,
-            fmt::format,
-            layer::{Filter, SubscriberExt},
-            registry,
-            reload::{self, Handle},
-            EnvFilter,
+            layer::Filter,
             Layer,
-            Registry,
         },
     },
     prelude::*,
@@ -26,7 +21,6 @@ use bevy_editor_pls_core::{
     AddEditorWindow,
 };
 use bevy_egui::egui::{
-    self,
     CentralPanel,
     Checkbox,
     CollapsingHeader,
@@ -34,7 +28,6 @@ use bevy_egui::egui::{
     Id,
     Label,
     ScrollArea,
-    SelectableLabel,
     Sense,
     SidePanel,
     TextEdit,
@@ -53,7 +46,7 @@ use bevy_egui::egui::{
 pub struct LoggingWindow;
 
 impl EditorWindow for LoggingWindow {
-    fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut Ui) {
+    fn ui(&self, world: &mut World, _cx: EditorWindowContext, ui: &mut Ui) {
         // disabling this because tracing Valueable support requires tracing-unstable cfg attr
         // trace!(window = EntityLog(cx.entity).as_value(), "test");
 
@@ -85,7 +78,7 @@ impl EditorWindow for LoggingWindow {
         };
 
         let drop_down = move |filter: &RwLock<Targets>, ui: &mut Ui| {
-            let mut current = filter.read().default_level().unwrap_or(LevelFilter::OFF);
+            let current = filter.read().default_level().unwrap_or(LevelFilter::OFF);
 
             if let Some(level) = drop_down_simple(current, ui) {
                 let mut old = filter.write();
@@ -309,7 +302,7 @@ impl EditorWindow for LoggingWindow {
                                 return false;
                             }
                         }
-                        Some("Event") => {
+                        Some("Span") => {
                             if !d.is_span() {
                                 return false;
                             }
@@ -446,14 +439,12 @@ impl Structable for EntityLog {
     }
 }
 
-use bevy_inspector_egui::dropdown::DropDownBox;
 use egui_extras::{Column, TableBuilder};
 use parking_lot::RwLock;
 use regex::Regex;
 use tracing_core::{callsite::Identifier, field::FieldSet, Level};
 use valuable::{Fields, StructDef, Structable, Valuable};
 
-use crate::metrics;
 
 #[derive(Debug, Clone, Default, Reflect)]
 pub struct ExtraCallsightData {
@@ -568,9 +559,9 @@ impl<S: Subscriber> Layer<S> for TracingDynamicSubscriber {
 
     fn on_new_span(
         &self,
-        attrs: &span::Attributes<'_>,
-        id: &span::Id,
-        ctx: bevy::log::tracing_subscriber::layer::Context<'_, S>,
+        _attrs: &span::Attributes<'_>,
+        _id: &span::Id,
+        _ctx: bevy::log::tracing_subscriber::layer::Context<'_, S>,
     ) {
     }
 
@@ -581,7 +572,7 @@ impl<S: Subscriber> Layer<S> for TracingDynamicSubscriber {
     ) {
         struct TestVisitor;
         impl tracing::field::Visit for TestVisitor {
-            fn record_debug(&mut self, field: &tracing_core::Field, value: &dyn std::fmt::Debug) {}
+            fn record_debug(&mut self, _field: &tracing_core::Field, _value: &dyn std::fmt::Debug) {}
             // fn record_value(&mut self, field: &tracing_core::Field, value: valuable::Value<'_>) {
             //     value.visit(&mut TestVisitor);
             // }
@@ -608,10 +599,6 @@ impl TracingDynamicSubscriber {
             .unwrap();
         // let (filter, reload_handle) = reload::Layer::new(filter);
 
-        let filter = env::var("RUST_LOG")
-            .unwrap_or("info".into())
-            .parse::<Targets>()
-            .unwrap();
         let meta_filter = env::var("RUST_LOG_META")
             .unwrap_or("trace".into())
             .parse::<Targets>()

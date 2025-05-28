@@ -1,5 +1,3 @@
-use bevy::ecs::bundle::DynamicBundle;
-use bevy::ecs::change_detection::MutUntyped;
 use bevy::ecs::component::{Component, Mutable};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::world::{Mut, Ref};
@@ -7,7 +5,7 @@ use bevy::prelude::*;
 use bevy::ptr::{Aligned, OwningPtr};
 use bevy::reflect::{Reflect};
 use bevy_inspector_egui::egui;
-use polonius_the_crab::{polonius, polonius_break, polonius_return};
+use polonius_the_crab::{polonius, polonius_return};
 use std::any::TypeId;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
@@ -23,7 +21,7 @@ pub struct EditorWindowInstance;
 /// An editor window type
 #[bevy_trait_query::queryable]
 pub trait EditorWindow: 'static + Send + Sync + dyn_clone::DynClone {
-    fn name(&self, world: &mut World, cx: EditorWindowContext) -> String {
+    fn name(&self, _world: &mut World,_cx: EditorWindowContext) -> String {
         std::any::type_name::<Self>()
             .trim_end_matches("Window")
             .trim_end_matches("::")
@@ -51,7 +49,7 @@ pub trait EditorWindow: 'static + Send + Sync + dyn_clone::DynClone {
     fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui);
 
     /// Ui shown in the `Open Window` menu item. By default opens the window as a floating window.
-    fn menu_ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
+    fn menu_ui(&self, world: &mut World, _cx: EditorWindowContext, ui: &mut egui::Ui) {
         let _ = world;
 
         if ui.button(self.menu_name()).clicked() {
@@ -93,7 +91,7 @@ dyn_clone::clone_trait_object!(EditorWindow);
 pub struct EditorWindowContext<'a> {
     // pub(crate) window_states: &'a mut HashMap<TypeId, EditorWindowState>,
     pub entity: Entity,
-    pub(crate) internal_state: &'a mut crate::editor::EditorTabs,
+    pub internal_state: &'a mut crate::editor::EditorTabs,
 }
 impl EditorWindowContext<'_> {
     pub fn get<'a, M: Component>(&self, world: &'a World) -> Option<Ref<'a, M>> {

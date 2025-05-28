@@ -7,22 +7,19 @@ use bevy::reflect::TypeRegistry;
 use bevy::render::sync_world::RenderEntity;
 use bevy::render::{Extract, RenderApp};
 use bevy_editor_pls_core::editor_window::{DefaultLink, Link};
-use bevy_editor_pls_core::{editor, AddEditorWindow};
+use bevy_editor_pls_core::AddEditorWindow;
 use bevy_inspector_egui::bevy_inspector::guess_entity_name;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
 use bevy_inspector_egui::egui::text::CCursorRange;
 use bevy_inspector_egui::egui::{self, ScrollArea};
 
-use bevy_editor_pls_core::{
-    editor_window::{EditorWindow, EditorWindowContext},
-    Editor,
-};
+use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
 // use bevy_mod_picking::backends::egui::EguiPointer;
 // use bevy_mod_picking::prelude::{IsPointerEvent, PointerClick, PointerButton};
 
 // use crate::add::{add_ui, AddWindow, AddWindowState};
-use crate::debug_settings::{DebugSettings, DebugSettingsWindow};
-use crate::inspector::{InspectorSelection, InspectorState, InspectorWindow};
+use crate::debug_settings::DebugSettings;
+use crate::inspector::{InspectorSelection, InspectorState};
 
 #[derive(Component)]
 pub struct HideInEditor;
@@ -30,7 +27,7 @@ pub struct HideInEditor;
 #[derive(Debug, Copy, Clone, Component, Default)]
 pub struct HierarchyWindow;
 impl EditorWindow for HierarchyWindow {
-    fn ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
+    fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
         let mut hierarchy_state = cx.get::<HierarchyState>(world).unwrap().clone();
 
         ScrollArea::vertical().show(ui, |ui| {

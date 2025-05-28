@@ -14,12 +14,6 @@ pub enum EditorEvent {
     FocusSelected,
 }
 
-#[derive(Debug)]
-enum ActiveEditorInteraction {
-    Viewport,
-    Editor,
-}
-
 #[derive(Resource)]
 pub struct Editor {
     on_window: Entity,
@@ -410,7 +404,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
     fn context_menu(
         &mut self,
         ui: &mut egui::Ui,
-        tab: &mut Self::Tab,
+        _tab: &mut Self::Tab,
         _surface: SurfaceIndex,
         _node: NodeIndex,
     ) {

@@ -1,11 +1,11 @@
 /// reimplements some of the top level stuff in bevy_metrics_dashboard to work with editor
-use std::{any::type_name, ops::DerefMut};
+use std::any::type_name;
 
 use bevy_editor_pls_core::{
     editor_window::{EditorWindow, EditorWindowContext},
     AddEditorWindow,
 };
-use bevy::{prelude::*, ui};
+use bevy::prelude::*;
 use bevy_inspector_egui::egui::{self, Ui};
 use bevy_metrics_dashboard::{
     registry::MetricsRegistry,
@@ -60,7 +60,7 @@ pub fn draw_all(
     mut windows: Query<(Entity, &mut DashboardWindow)>,
 ) {
     let ui = input.ui;
-    let Ok((entity, mut window)) = windows.get_mut(input.entity) else {
+    let Ok((_entity, mut window)) = windows.get_mut(input.entity) else {
         error!("missing window {}", input.entity);
         return;
     };
@@ -100,7 +100,7 @@ impl Plugin for MetricsWindow {
         // https://github.com/bonsairobo/bevy_metrics_dashboard/blob/f4dcff0a2732b2ec6d7c4c924d258c327c9be9c5/src/dashboard_plugin.rs#L15
         app.add_event::<RequestPlot>()
             .init_resource::<CachedPlotConfigs>()
-            .add_systems(Update, (NamespaceTreeWindow::draw_all))
+            .add_systems(Update, NamespaceTreeWindow::draw_all)
             // Enforce strict ordering:
             // metrics producers (before Last) --> metrics consumers --> bucket clearing
             .add_systems(

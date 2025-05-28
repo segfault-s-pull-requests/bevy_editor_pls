@@ -11,7 +11,7 @@ use bevy_editor_pls_core::{
 };
 use bevy_inspector_egui::egui;
 
-use crate::inspector::{InspectorSelection, InspectorState, InspectorWindow};
+use crate::inspector::{InspectorSelection, InspectorState};
 
 #[derive(Debug, Default, Clone, Copy, Component)]
 pub struct AssetsWindow;

@@ -10,13 +10,13 @@ use bevy_editor_pls_core::{
 };
 use bevy_inspector_egui::egui;
 
-use crate::inspector::{InspectorSelection, InspectorState, InspectorWindow};
+use crate::inspector::{InspectorSelection, InspectorState};
 
 #[derive(Debug, Clone, Default, Component)]
 pub struct ResourcesWindow;
 
 impl EditorWindow for ResourcesWindow {
-    fn ui(&self, world: &mut World, mut cx: EditorWindowContext, ui: &mut egui::Ui) {
+    fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
         let type_registry = world.resource::<AppTypeRegistry>().clone(); //is Arc
         let type_registry = type_registry.read();
         let mut selection = cx
