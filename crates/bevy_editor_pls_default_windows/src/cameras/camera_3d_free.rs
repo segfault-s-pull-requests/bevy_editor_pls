@@ -3,6 +3,7 @@ use bevy::{input::mouse::MouseMotion, prelude::*};
 pub(crate) struct FlycamPlugin;
 impl Plugin for FlycamPlugin {
     fn build(&self, app: &mut App) {
+        app.register_type::<FlycamControls>();
         app.add_systems(
             Update,
             camera_movement.in_set(CameraSystem::EditorCam3dFree),
@@ -75,7 +76,7 @@ fn camera_movement(
             - if_then_1(keyboard_input.pressed(flycam.key_down));
 
         if forward == 0.0 && sideways == 0.0 && up == 0.0 {
-            return;
+            continue;;
         }
 
         let speed = if keyboard_input.pressed(flycam.key_boost) {
@@ -100,16 +101,14 @@ fn camera_look(
 ) {
     for (mut flycam, mut transform) in query.iter_mut() {
         if !flycam.enable_look || !mouse_input.pressed(MouseButton::Right) {
-            //Prevent accumulation of irrelevant events
-            mouse_motion_event_reader.clear();
-            return;
+            continue;
         }
         let mut delta: Vec2 = Vec2::ZERO;
         for event in mouse_motion_event_reader.read() {
             delta += event.delta;
         }
         if delta.is_nan() || delta.abs_diff_eq(Vec2::ZERO, f32::EPSILON) {
-            return;
+            continue;
         }
 
         flycam.yaw -= delta.x / 180.0 * flycam.sensitivity;
@@ -121,4 +120,7 @@ fn camera_look(
 
         transform.rotation = Quat::from_euler(EulerRot::YXZ, flycam.yaw, flycam.pitch, 0.0);
     }
+
+    //Prevent accumulation of irrelevant events
+    mouse_motion_event_reader.clear();
 }

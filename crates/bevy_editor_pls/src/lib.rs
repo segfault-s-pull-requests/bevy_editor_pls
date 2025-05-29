@@ -132,7 +132,7 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
     use bevy_editor_pls_core::{editor_window::EditorWindowsCollection};
     use bevy_editor_pls_default_windows::prelude::*;
     let parent = commands
-        .spawn((Name::new("Editor Windows"), EditorWindowsCollection))
+        .spawn((Name::new("Editor Windows"), EditorWindowsCollection, Transform::default() /*Transform sync breaks if parent doesn't have transform*/))
         .id();
 
     let h = commands.spawn(HierarchyWindow).insert(ChildOf(parent)).id();
@@ -149,9 +149,10 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
         .spawn((
             bevy_editor_pls_default_windows::cameras::default_editor_cam(),
             CameraWindow::default(),
+            ChildOf(parent)
         ))
         .id();
-    let c2 = commands.spawn(CameraWindow::default()).id();
+    let c2 = commands.spawn(CameraWindow::default()).insert(ChildOf(parent)).id();
 
     tree.state.push_to_first_leaf(h.into());
     tree.state.push_to_first_leaf(r.into());
