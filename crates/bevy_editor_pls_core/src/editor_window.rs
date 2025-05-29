@@ -243,6 +243,9 @@ impl EditorWindowContext<'_> {
 //         });
 // }
 
+// interestingly the inspector cannot be used to change this
+// because it doesn't reflect(Default)
+// couldn't the inspector construct a value for Entity? idk
 #[derive(Debug, Clone, Resource, Reflect)]
 pub enum DefaultLink<M> {
     Data(M),
