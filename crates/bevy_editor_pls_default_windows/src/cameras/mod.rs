@@ -254,6 +254,7 @@ impl Plugin for CameraWindow {
         // app.add_systems(PreStartup, spawn_editor_camera);
 
         app.register_type::<Disabled<Camera>>();
+        app.register_type::<CameraWindow>();
         app.add_systems(
             PostUpdate,
             (
@@ -490,9 +491,9 @@ fn set_camera_viewports_and_enabled(
             .find(|t| t.1.entity == window_entity)
         else {
             warn!(
-                "missing tab for CameraWindow {}\n{:?}",
+                "missing tab for CameraWindow {}",
                 window_entity,
-                tabs.state.main_surface().iter().collect::<Vec<_>>()
+                // tabs.state.main_surface().iter().collect::<Vec<_>>()
             );
             continue;
         };
@@ -556,7 +557,7 @@ fn set_camera_viewports_and_enabled(
     // set camera enabled
     for (camera_entity, mut camera) in cameras.iter_mut() {
         // ignore cameras not targeting the window of the editor
-        if target_window(&camera, *primary_window) == Some(editor.window()) {
+        if target_window(&camera, *primary_window) != Some(editor.window()) {
             continue;
         }
 
