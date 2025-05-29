@@ -1,13 +1,14 @@
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 
 use crate::hierarchy::HierarchyState;
 
 // use super::add::{AddWindow, AddWindowState};
 use bevy::app::Plugin;
 use bevy::asset::UntypedAssetId;
-use bevy::ecs::component::Component;
+use bevy::ecs::component::{Component, ComponentId};
+use bevy::log::error_once;
 use bevy::prelude::{AppTypeRegistry, World};
-use bevy::reflect::{TypePath, TypeRegistry};
+use bevy::reflect::{Reflect, TypePath, TypeRegistry};
 use bevy_editor_pls_core::editor_window::{DefaultLink, EditorWindow, EditorWindowContext, Link};
 use bevy_editor_pls_core::AddEditorWindow;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
@@ -18,12 +19,13 @@ use bevy_inspector_egui::{bevy_inspector, egui};
 pub enum InspectorSelection {
     #[default]
     Entities,
-    Resource(TypeId, String),
+    Resource(ComponentId, String),
     Asset(TypeId, String, UntypedAssetId),
 }
 
-#[derive(Debug, Clone, Default, Component, TypePath)]
+#[derive(Debug, Clone, Default, Component, Reflect)]
 pub struct InspectorState {
+    #[reflect(ignore)]
     pub selected: InspectorSelection,
 }
 
@@ -60,7 +62,9 @@ impl EditorWindow for InspectorWindow {
 impl Plugin for InspectorWindow {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_editor_window::<Self>();
+        app.register_type::<InspectorState>();
         app.register_type::<Link<InspectorState>>();
+        app.register_type::<DefaultLink<InspectorState>>();
         app.init_resource::<DefaultLink<InspectorState>>();
     }
 }
@@ -87,8 +91,14 @@ fn inspector(
                 // add_ui(ui, entities, world, add_window_state);
             }
         },
-        InspectorSelection::Resource(type_id, ref name) => {
+        InspectorSelection::Resource(id, ref name) => {
             ui.label(name);
+            let Some(info) = world.components().get_info(id) else {
+                return;
+            };
+            let Some(type_id) = info.type_id() else {
+                return;
+            };
             bevy_inspector::by_type_id::ui_for_resource(world, type_id, ui, name, type_registry)
         }
         InspectorSelection::Asset(type_id, ref name, handle) => {
