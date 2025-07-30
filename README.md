@@ -1,3 +1,24 @@
+# segfault's refactor
+I rewrote this to make it a bit more ecs centric.
+- [x] Editor windows are implemented as marker components. Every open window/tab is a entity.
+- [x] EditorWindow trait's on_build hooks removed. uses plugins instead.
+- [ ] window/tab title now uses the Name component, falling back to entity id. 
+- [ ] Ideally the editorwindow trait would be replaced with something using systems. Haven't thought this all the way through yet.
+- [ ] And I should use the egui_dock add button instead of othogonal menu.
+  - the menu bar covers up part of game view and needs to be removed anyway
+- [ ] Logging and metrics and systemgraph need to be feature gated. (Or just seperate crates.)
+  - [ ] logging and systemgraph need to actually be implemented.
+- [ ] Need change detection info in inspector.
+- [ ] A nicer way to spawn in a certain spot, via relations
+- [ ] Link should be a relation.
+- [ ] I don't like the keybinds system, it should be ripped out and replaced with leafwing or enhanced input.
+- [ ] I'd like to abstract controls into a crate. ReflectCameraControls?
+  - [ ] same thing for filters.
+- [ ] re-add console. and rework to use any command.
+- [ ] add outline and picking
+  - [ ] fix picking bug
+
+
 # bevy_editor_pls
 
 > :warning: **This is very much work in progress**: Take a look at the [missing features](#missing-features) to see if your use case isn't yet supported.

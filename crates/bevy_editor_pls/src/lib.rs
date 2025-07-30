@@ -5,6 +5,8 @@
 pub mod controls;
 
 pub use bevy_egui::EguiPlugin;
+pub use bevy_inspector_egui;
+pub use bevy_inspector_egui::inspector_egui_impls::InspectorEguiImpl;
 
 use bevy::{
     prelude::{Entity, Plugin, Update},

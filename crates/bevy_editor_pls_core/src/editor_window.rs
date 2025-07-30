@@ -1,5 +1,6 @@
 use bevy::ecs::component::{Component, Mutable};
 use bevy::ecs::entity::Entity;
+use bevy::ecs::system::SystemParam;
 use bevy::ecs::world::{Mut, Ref};
 use bevy::prelude::*;
 use bevy::ptr::{Aligned, OwningPtr};
@@ -9,6 +10,7 @@ use polonius_the_crab::{polonius, polonius_return};
 use std::any::TypeId;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
+use std::ops::Deref;
 use std::ptr::NonNull;
 
 /// at the moment this is just for organization.
@@ -99,7 +101,7 @@ impl EditorWindowContext<'_> {
             return Some(c);
         }
         if let Some(l) = world.entity(self.entity).get::<Link<M>>() {
-            if let Some(e) = world.entity(l.0).get_ref::<M>() {
+            if let Some(e) = world.entity(l.entity).get_ref::<M>() {
                 return Some(e);
             }
         }
@@ -137,7 +139,7 @@ impl EditorWindowContext<'_> {
         });
 
         if let Some(l) = world.get::<Link<M>>(self.entity) {
-            let e = l.0;
+            let e = l.entity;
             polonius!(|world| -> Option<Mut<'polonius, M>> {
                 let res = world.get_mut::<M>(e);
                 if let Some(c) = res {
@@ -258,6 +260,123 @@ impl<M: Default> Default for DefaultLink<M> {
     }
 }
 
+// NOTE making this a relation didn't work because of generics.
+// doesn't need to be bidirectional anyway
 #[derive(Debug, Copy, Clone, Component, Reflect)]
 #[reflect(Component)]
-pub struct Link<M>(pub Entity, #[reflect(ignore)] pub PhantomData<M>);
+pub struct Link<M: Send + Sync> {
+    pub entity: Entity,
+
+    #[reflect(ignore)]
+    pub _phantom_data: PhantomData<M>,
+}
+
+// #[derive(Debug, Clone, Component, Reflect)]
+// #[reflect(Component)]
+// pub struct Linked<M:Send+Sync>{
+//     entity: Vec<Entity>,
+//     #[reflect(ignore)]
+//     pub _phantom_data: PhantomData<M>
+// }
+
+#[derive(SystemParam)]
+pub struct LinksMut<'w, 's, T: Component<Mutability = Mutable>> {
+    pub data: Query<'w, 's, Mut<'static, T>>,
+    pub links: Query<'w, 's, Mut<'static, Link<T>>>,
+    pub default: Option<ResMut<'w, DefaultLink<T>>>,
+}
+
+impl<'w, 's, T: Component<Mutability = Mutable>> LinksMut<'w, 's, T> {
+    // I could not figure out any way to get an Ref, since you can't turn a &Mut into a Ref
+    pub fn get(&self, entity: Entity) -> Option<&T> {
+        if let Ok(c) = self.data.get(entity) {
+            return Some(c.into_inner());
+        }
+        match self.links.get(entity).and_then(|l| self.data.get(l.entity)) {
+            Ok(c) => return Some(c.into_inner()),
+            Err(_) => {}
+        }
+
+        if self.default.is_none() {
+            return None;
+        }
+
+        let default = self.default.as_ref().unwrap();
+        match default.as_ref() {
+            DefaultLink::Data(_) => {
+                let data = match default.as_ref() {
+                    DefaultLink::Data(d) => d,
+                    _ => unreachable!(),
+                };
+                return Some(data);
+            }
+            DefaultLink::Link(entity) => {
+                if let Ok(c) = self.data.get(*entity) {
+                    return Some(c.into_inner());
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn get_mut<'a>(&'a mut self, entity: Entity) -> Option<Mut<'a, T>> {
+        let this = self as *mut Self;
+        if let Ok(c) = unsafe { (*this).data.get_mut(entity) } {
+            return Some(c);
+        }
+
+        match self
+            .links
+            .get(entity)
+            .and_then(|l| unsafe { (*this).data.get_mut(l.entity) })
+        {
+            Ok(c) => return Some(c),
+            Err(_) => {}
+        }
+
+        if self.default.is_none() {
+            return None;
+        }
+
+        let default = unsafe { (*this).default.as_mut().unwrap() };
+        match default.as_ref() {
+            DefaultLink::Data(_) => {
+                let data = default.reborrow().map_unchanged(|d| match d {
+                    DefaultLink::Data(d) => d,
+                    _ => unreachable!(),
+                });
+                return Some(data);
+            }
+            DefaultLink::Link(entity) => {
+                if let Ok(c) = self.data.get_mut(*entity) {
+                    return Some(c);
+                }
+            }
+        }
+
+        // dealing with borrow checker false positive
+        // see: https://docs.rs/polonius-the-crab/latest/polonius_the_crab/index.html
+        //
+        // EDIT:
+        // anti-unsafe sentiment is a race to the bottom.
+        // "the bottom" being a place where everything has been allowed to get so complicated that nobody understands how things work
+        // computers are physical machines, not abstract ones
+        // a systems programmer cannot afford to be uncomfortable with raw memory access
+        // if your don't yourself to write unsafe, either you need to get better, or your code needs to be simpler.
+        // Either way, the correct answer is to use unsafe alot more liberally than the rust community typically recommends
+        // This has two effects:
+        // 1. to force (and the community) to learn
+        // 2. to discourage complications that make it hard to reason about what the computer is physically doing.
+        //
+        // Learning a (complicated, noisy) macro, in order to deal with a known false positive is not better.
+        // polonius!(|world| -> Option<Mut<'polonius, M>> {
+        //     let res = world.get_mut::<M>(self.entity);
+        //     if let Some(c) = res {
+        //         polonius_return!(Some(c));
+        //     }
+        // });
+
+        None
+    }
+}

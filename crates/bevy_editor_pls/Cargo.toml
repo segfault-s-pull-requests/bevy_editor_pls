@@ -20,6 +20,7 @@ default_windows = [
 default = ["default_windows"]
 
 [dependencies]
+bevy-inspector-egui.workspace = true
 bevy_editor_pls_core.workspace = true
 bevy_editor_pls_default_windows = { workspace = true, optional = true }
 bevy = { version = "0.16.0", default-features = false, features = ["x11"] }

@@ -3,7 +3,8 @@ pub mod camera_3d_free;
 pub mod camera_3d_panorbit;
 // use crate::scenes::NotInScene;
 
-use bevy::ecs::system::SystemState;
+use bevy::ecs::event::SendBatchIds;
+use bevy::ecs::system::{self, SystemState};
 use bevy::render::camera::RenderTarget;
 use bevy::render::view::RenderLayers;
 use bevy::window::{PrimaryWindow, WindowRef};
@@ -98,10 +99,12 @@ impl EditorWindow for CameraWindow {
                     window.camera = Some(camera.0);
                 }
             }
+            state.apply(world);
             return;
         };
 
         if !is_editor_cam {
+            state.apply(world);
             return;
         }
 
