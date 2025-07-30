@@ -9,7 +9,7 @@ readme.workspace = true
 
 [features]
 bevy_metrics_dashboard = ["dep:bevy_metrics_dashboard"]
-default = [ "bevy_metrics_dashboard", "bevy-inspector-egui/highlight_changes" ]
+default = [ "bevy_metrics_dashboard" ]
 
 [dependencies]
 bevy = { version = "0.16.0", default-features = false, features = [
@@ -24,28 +24,25 @@ bevy_metrics_dashboard = { workspace = true, optional = true }
 bevy_editor_pls_core.workspace = true
 bevy-inspector-egui.workspace = true
 bevy_egui.workspace = true
-# bevy_mod_picking = { git = "https://github.com/aevyrie/bevy_mod_picking", rev = "7a9ffd020b530acef25c8cf8bc9475b7a13bd353", default-features = false, features = [
-#     "backend_raycast",
-#     "backend_egui",
-#     "backend_sprite",
-#     "backend_bevy_ui",
-# ] }
 indexmap = "2"
 pretty-type-name = "1.0"
 bevy_mod_debugdump = "0.13.0"
 opener = "0.8.1"
 transform-gizmo-bevy.workspace = true
 egui_graphs = "0.25.1"
-petgraph = "0.8.1"
+petgraph = { version = "0.8.1", features = ["generate", "dot_parser"] }
+dot-parser = "*"
 parking_lot = "*"
 dirs = "*"
 tracing-log = "*"
 tracing-error = "*"
-tracing-tracy = "*"
+# tracing-tracy = "*"
 tracing-core = { version = "*", features = ["valuable"]}
 egui_extras = "*"
 valuable = "*"
 regex = "*"
+avian3d = "*" # todo optional dep?
+bevy_mod_outline = "*"
 # cargo patch should disregard semver
 # obviously
 # bastards

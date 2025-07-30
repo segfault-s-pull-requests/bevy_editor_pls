@@ -2,11 +2,12 @@ pub mod debugdump;
 
 use std::sync::Arc;
 
+use avian3d::prelude::{PhysicsDebugPlugin, PhysicsGizmos};
 use bevy::{
     pbr::wireframe::WireframeConfig,
     prelude::*,
     reflect::TypeRegistry,
-    render::{render_resource::WgpuFeatures, renderer::RenderAdapter},
+    render::{render_resource::WgpuFeatures, renderer::RenderAdapter, view::RenderLayers},
 };
 use bevy_editor_pls_core::{editor_window::{EditorWindow, EditorWindowContext}, AddEditorWindow};
 use bevy_inspector_egui::{
@@ -14,11 +15,13 @@ use bevy_inspector_egui::{
     reflect_inspector::ui_for_value,
 };
 
+use crate::cameras::EDITOR_RENDER_LAYER;
+
 #[derive(Debug, Clone, Resource)]
 pub struct DebugSettings {
     pub pause_time: bool,
     pub wireframes: bool,
-    pub highlight_selected: bool,
+    pub physics_gizmos: bool,
 
     open_debugdump_status: Option<Arc<DebugdumpError>>,
 }
@@ -36,7 +39,7 @@ impl Default for DebugSettings {
         Self {
             pause_time: false,
             wireframes: false,
-            highlight_selected: true,
+            physics_gizmos: false,
 
             open_debugdump_status: None,
         }
@@ -70,6 +73,16 @@ impl Plugin for DebugSettingsWindow {
         // app.init_resource::<PreviouslyActiveCameras>();
         app.add_editor_window::<DebugSettingsWindow>();
         app.init_resource::<DebugSettings>();
+
+        if ! app.is_plugin_added::<PhysicsDebugPlugin>() {
+            app.add_plugins(PhysicsDebugPlugin::default());
+            app.insert_gizmo_config(
+                PhysicsGizmos::default(),
+                GizmoConfig { enabled: true, render_layers: RenderLayers::layer(EDITOR_RENDER_LAYER), ..default()}
+            );
+        }        
+    }
+    fn finish(&self, app: &mut App) {
         debugdump::setup(app);
     }
 }
@@ -117,14 +130,31 @@ fn debug_ui_options(
 
         let mut time = world.resource_mut::<Time<Virtual>>();
 
+        state.pause_time = time.is_paused();
         if ui.checkbox(&mut state.pause_time, "").changed() {
             if state.pause_time {
                 time.pause();
             } else {
                 time.unpause();
             }
-        }
+        }        
         ui.end_row();
+        
+        let mut time = world.resource_mut::<Time<avian3d::prelude::Physics>>();
+
+        use avian3d::schedule::PhysicsTime;
+        let mut val = time.is_paused();
+        if ui.checkbox(&mut val, "").changed() {
+            if val {
+                time.pause();
+            } else {
+                time.unpause();
+            }
+        }        
+        ui.end_row();
+        
+        
+        
         ui.label("Game Speed");
 
         let mut speed = time.relative_speed_f64();
@@ -159,14 +189,26 @@ fn debug_ui_options(
         });
         ui.end_row();
 
-        if !wireframe_enabled {
-            state.highlight_selected = false;
+        // if !wireframe_enabled {
+        //     state.highlight_selected = false;
+        // }
+
+        // ui.label("Highlight selected entity");
+        // ui.add_enabled_ui(wireframe_enabled, |ui| {
+        //     ui.checkbox(&mut state.highlight_selected, "");
+        // });
+
+        
+        let mut gizmos = world.get_resource_mut::<GizmoConfigStore>().unwrap();
+        let (config, _) = gizmos.config_mut::<avian3d::prelude::PhysicsGizmos>();
+        ui.checkbox(&mut config.enabled, "Physics gizmos");
+        if ui.checkbox(&mut state.physics_gizmos, "^ in game").changed() {
+            config.render_layers = match state.physics_gizmos {
+                true => RenderLayers::default(),
+                false => RenderLayers::layer(EDITOR_RENDER_LAYER),
+            };
         }
 
-        ui.label("Highlight selected entity");
-        ui.add_enabled_ui(wireframe_enabled, |ui| {
-            ui.checkbox(&mut state.highlight_selected, "");
-        });
         ui.end_row();
     });
 }

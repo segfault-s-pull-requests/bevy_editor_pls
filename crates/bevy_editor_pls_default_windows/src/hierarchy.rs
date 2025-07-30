@@ -1,22 +1,27 @@
-// pub mod picking;
-
+use avian3d::parry::either;
 use bevy::ecs::entity::Entities;
+use bevy::ecs::system::SystemIdMarker;
 use bevy::pbr::wireframe::Wireframe;
+use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistry;
 use bevy::render::sync_world::RenderEntity;
 use bevy::render::{Extract, RenderApp};
-use bevy_editor_pls_core::editor_window::{DefaultLink, Link};
-use bevy_editor_pls_core::AddEditorWindow;
+use bevy_editor_pls_core::editor::EditorTabs;
+use bevy_editor_pls_core::editor_window::{DefaultLink, Link, LinksMut};
+use bevy_editor_pls_core::{AddEditorWindow, Editor, EditorSet};
+use bevy_egui::EguiContext;
 use bevy_inspector_egui::bevy_inspector::guess_entity_name;
-use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
+use bevy_inspector_egui::bevy_inspector::hierarchy::{SelectedEntities, SelectionMode};
 use bevy_inspector_egui::egui::text::CCursorRange;
 use bevy_inspector_egui::egui::{self, ScrollArea};
 
 use bevy_editor_pls_core::editor_window::{EditorWindow, EditorWindowContext};
+use bevy_mod_outline::{ComputedOutline, OutlineMode, OutlinePlugin, OutlineStencil, OutlineVolume};
 // use bevy_mod_picking::backends::egui::EguiPointer;
 // use bevy_mod_picking::prelude::{IsPointerEvent, PointerClick, PointerButton};
 
+use crate::cameras::CameraWindow;
 // use crate::add::{add_ui, AddWindow, AddWindowState};
 use crate::debug_settings::DebugSettings;
 use crate::inspector::{InspectorSelection, InspectorState};
@@ -53,13 +58,17 @@ impl EditorWindow for HierarchyWindow {
 
 impl Plugin for HierarchyWindow {
     fn build(&self, app: &mut bevy::prelude::App) {
+        if !app.is_plugin_added::<OutlinePlugin>() {
+            app.add_plugins(OutlinePlugin);
+        }
+
         app.add_editor_window::<HierarchyWindow>();
         app.register_type::<Link<HierarchyState>>();
         app.init_resource::<DefaultLink<HierarchyState>>();
 
-        // picking::setup(app);
         app.add_systems(PostUpdate, clear_removed_entites);
-        // .add_system(handle_events);
+        app.add_systems(PostUpdate, handle_events.after(EditorSet::UI));
+        app.add_systems(Update, update_outline.after(handle_events));
 
         app.sub_app_mut(RenderApp)
             .add_systems(ExtractSchedule, extract_wireframe_for_selected);
@@ -72,40 +81,115 @@ fn clear_removed_entites(mut state: Query<&mut HierarchyState>, entities: &Entit
     }
 }
 
-/*fn handle_events(
-    mut click_events: EventReader<PointerClick>,
-    mut editor: ResMut<Editor>,
-    editor_state: Res<EditorState>,
-    input: Res<Input<KeyCode>>,
-    egui_entity: Query<&EguiPointer>,
-    mut egui_ctx: ResMut<EguiContext>,
+/// update outlines around entities selected in hierarchy windows
+fn update_outline(
+    editor: Res<Editor>,
+    mut state: LinksMut<HierarchyState>,
+    windows: Query<Entity, With<HierarchyWindow>>,
+    mut outlines: Query<&mut OutlineVolume>,
+    mut commands: Commands,
+    mesh: Query<&Mesh3d>
 ) {
-    for click in click_events.iter() {
-        if !editor_state.active {
-            return;
-        }
-
-        if click.event_data().button != PointerButton::Primary {
-            continue;
-        }
-
-        if egui_entity.get(click.target()).is_ok() || egui_ctx.ctx_mut().wants_pointer_input() {
+    for window in windows.iter() {
+        let Some(mut state) = state.get_mut(window) else {
             continue;
         };
+        let state = state.as_mut();
+        if editor.active {
+            for s in state.selected.iter() {
+                if !state.outline.contains(&s) {
+                    state.outline.insert(s);
+                    if mesh.contains(s){
+                        commands.entity(s).insert((
+                            OutlineVolume {
+                                visible: true,
+                                width: 4.0,
+                                colour: Color::Srgba(Srgba {
+                                    red: 1.0,
+                                    green: 0.0,
+                                    blue: 1.0,
+                                    alpha: 0.8,
+                                }),
+                            },
+                            OutlineStencil::default(),
+                            OutlineMode::FloodFlatDoubleSided,
+                        ));
+                    }
+                }
+            }
+        }
 
-        let state = editor.window_state_mut::<HierarchyWindow>().unwrap();
+        let mut to_remove = Vec::new();
+        for s in state.outline.iter() {
+            if !state.selected.contains(*s) || !editor.active {
+                to_remove.push(*s);
+                // BUG: bevy_mod_picking: seems that visible=false outlines still clip other outlines (floor clipping tower)
+                commands.entity(*s).remove::<(OutlineVolume, OutlineStencil, OutlineMode, ComputedOutline)>();
+                // if let Ok(mut a) = outlines.get_mut(*s) {
+                //     a.visible = false;
+                // }
+            }
+        }
+        for e in to_remove {
+            state.outline.remove(&e);
+        }
+    }
+}
 
-        let ctrl = input.any_pressed([KeyCode::LControl, KeyCode::RControl]);
-        let shift = input.any_pressed([KeyCode::LShift, KeyCode::RShift]);
+fn handle_events(
+    mut click_events: EventReader<Pointer<Click>>,
+    // mut editor: ResMut<Editor>,
+    // editor_state: Res<EditorState>,
+    input: Res<ButtonInput<KeyCode>>,
+    
+    mut egui_ctx: Query<&mut EguiContext>,
+    mut state: LinksMut<HierarchyState>,
+
+    editor: Res<Editor>,
+    mut tabs: ResMut<EditorTabs>,
+    camera_tabs: Query<(Entity, &CameraWindow)>,
+) {
+    let Some(active_window) = tabs.state.find_active_focused().map(|a| a.1.entity) else {
+        return;
+    };
+    if !(editor.active && camera_tabs.contains(active_window)) {
+        click_events.clear();
+    }
+
+    for click in click_events.read() {
+        if click.event.button != PointerButton::Primary {
+            continue;
+        }
+
+        if click.target == editor.window() {
+            continue;
+        }
+
+        let mut ctx = egui_ctx.get_mut(editor.window()).unwrap();
+        // bevy_egui should stop picking from passing through egui ui nodes to the viewport.
+        // but this doesn't seem to be happening
+        // neither of these work, so I'm at a loss.
+        let ctx = ctx.get_mut();
+        // dbg!(ctx.wants_pointer_input()); //true
+        // dbg!(ctx.is_pointer_over_area()); //true
+        // dbg!(ctx.is_using_pointer()); //false
+        if ctx.wants_pointer_input() || ctx.is_pointer_over_area() {
+            // continue;
+        };
+
+        let ctrl = input.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
+        let shift = input.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
         let mode = SelectionMode::from_ctrl_shift(ctrl, shift);
 
-        let entity = click.target();
+        let entity = click.target;
         info!("Selecting mesh, found {:?}", entity);
+
+        let mut state = state.get_mut(active_window).unwrap();
         state
             .selected
             .select(mode, entity, |_, _| std::iter::once(entity));
     }
-}*/
+}
 
 fn extract_wireframe_for_selected(
     debug: Extract<Res<DebugSettings>>,
@@ -113,7 +197,7 @@ fn extract_wireframe_for_selected(
     mut commands: Commands,
     query: Extract<Query<RenderEntity>>,
 ) {
-    if debug.highlight_selected {
+    if debug.physics_gizmos {
         for state in state.iter() {
             let selected = &state.selected;
             for selected in selected.iter() {
@@ -131,6 +215,7 @@ fn extract_wireframe_for_selected(
 pub struct HierarchyState {
     pub selected: SelectedEntities,
     rename_info: Option<RenameInfo>,
+    outline: HashSet<Entity>,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +240,7 @@ impl Hierarchy<'_> {
         let HierarchyState {
             selected,
             rename_info,
+            outline,
         } = self.state;
 
         let new_selection = bevy_inspector_egui::bevy_inspector::hierarchy::Hierarchy {
@@ -202,7 +288,11 @@ impl Hierarchy<'_> {
                 false
             }),
         }
-        .show::<Without<HideInEditor>>(ui);
+        .show::<(
+            Without<HideInEditor>,
+            Without<Observer>,
+            Without<SystemIdMarker>,
+        )>(ui);
 
         if let Some(entity) = despawn_recursive {
             self.world.entity_mut(entity).despawn();
