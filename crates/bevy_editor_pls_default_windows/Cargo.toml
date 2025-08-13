@@ -38,7 +38,7 @@ tracing-log = "*"
 tracing-error = "*"
 # tracing-tracy = "*"
 tracing-core = { version = "*", features = ["valuable"]}
-egui_extras = "*"
+egui_extras = "0.31.1"
 valuable = "*"
 regex = "*"
 avian3d = "*" # todo optional dep?
