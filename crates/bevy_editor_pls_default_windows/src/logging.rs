@@ -47,7 +47,10 @@ impl EditorWindow for LoggingWindow {
 
         let lineheight = default_line_height(ui);
 
-        let sub = world.resource::<TracingDynamicSubscriber>();
+        let Some(sub) = world.get_resource::<TracingDynamicSubscriber>() else {
+            ui.label("unimplemented");
+            return;
+        };
 
         let drop_down_simple = |mut current: LevelFilter, ui: &mut Ui| {
             let mut selected = None;

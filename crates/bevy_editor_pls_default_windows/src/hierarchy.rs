@@ -1,4 +1,5 @@
 use avian3d::parry::either;
+use bevy::color::palettes::css::GREEN;
 use bevy::ecs::entity::Entities;
 use bevy::ecs::system::SystemIdMarker;
 use bevy::pbr::wireframe::Wireframe;
@@ -81,14 +82,16 @@ fn clear_removed_entites(mut state: Query<&mut HierarchyState>, entities: &Entit
     }
 }
 
+/// TODO move this out of heirarchy, because it should work without a hierarchy window open
 /// update outlines around entities selected in hierarchy windows
 fn update_outline(
     editor: Res<Editor>,
     mut state: LinksMut<HierarchyState>,
     windows: Query<Entity, With<HierarchyWindow>>,
-    mut outlines: Query<&mut OutlineVolume>,
+    // mut outlines: Query<&mut OutlineVolume>,
     mut commands: Commands,
     mesh: Query<&Mesh3d>,
+    aabb: Query<&Mesh3d>,
 ) {
     for window in windows.iter() {
         let Some(mut state) = state.get_mut(window) else {
@@ -115,6 +118,13 @@ fn update_outline(
                             OutlineMode::FloodFlatDoubleSided,
                         ));
                     }
+                    if aabb.contains(s) {
+                        commands
+                            .entity(s)
+                            .insert(bevy::gizmos::prelude::ShowAabbGizmo {
+                                color: Some(GREEN.into()),
+                            }); //todo move systems
+                    }
                 }
             }
         }
@@ -124,9 +134,13 @@ fn update_outline(
             if !state.selected.contains(*s) || !editor.active {
                 to_remove.push(*s);
                 // BUG: bevy_mod_picking: seems that visible=false outlines still clip other outlines (floor clipping tower)
-                commands
-                    .entity(*s)
-                    .remove::<(OutlineVolume, OutlineStencil, OutlineMode, ComputedOutline)>();
+                commands.entity(*s).remove::<(
+                    OutlineVolume,
+                    OutlineStencil,
+                    OutlineMode,
+                    ComputedOutline,
+                    ShowAabbGizmo,
+                )>();
                 // if let Ok(mut a) = outlines.get_mut(*s) {
                 //     a.visible = false;
                 // }

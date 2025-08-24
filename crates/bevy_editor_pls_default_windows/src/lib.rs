@@ -10,6 +10,7 @@ pub mod graph;
 pub mod hierarchy;
 pub mod inspector;
 pub mod logging;
+pub mod query;
 pub mod renderer;
 pub mod resources;
 

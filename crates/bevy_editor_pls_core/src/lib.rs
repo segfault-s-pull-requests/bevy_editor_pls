@@ -3,6 +3,7 @@ pub mod editor;
 /// Trait definition for new editor windows
 pub mod editor_window;
 
+use bevy::diagnostic::{Diagnostic, RegisterDiagnostic};
 use bevy::prelude::*;
 use bevy::render::camera::CameraUpdateSystem;
 use bevy::transform::TransformSystem;
@@ -20,6 +21,8 @@ pub use editor::{Editor, EditorEvent};
 
 /// Re-export of [`egui_dock`]
 pub use egui_dock;
+
+use crate::editor::EGUI_EDITOR_RENDERTIME;
 
 /// Extension trait for [`App`] to add a new editor window type
 pub trait AddEditorWindow {
@@ -81,6 +84,8 @@ impl Plugin for EditorPlugin {
                     .before(CameraUpdateSystem)
                     .before(EguiPostUpdateSet::ProcessOutput),
             );
+
+        app.register_diagnostic(Diagnostic::new(EGUI_EDITOR_RENDERTIME));
     }
 }
 
