@@ -50,9 +50,14 @@ impl EditorWindow for LoggingWindow {
         // disabling this because tracing Valueable support requires tracing-unstable cfg attr
         // trace!(window = EntityLog(cx.entity).as_value(), "test");
 
+
         let lineheight = default_line_height(ui);
 
-        let sub = world.resource::<TracingDynamicSubscriber>();
+        let Some(sub) = world.get_resource::<TracingDynamicSubscriber>() else {
+            ui.label("unimplemented");
+            return;
+            
+        };
 
         let drop_down_simple = |mut current: LevelFilter, ui: &mut Ui| {
             let mut selected = None;

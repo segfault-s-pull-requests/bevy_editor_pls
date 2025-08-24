@@ -12,6 +12,7 @@ pub mod inspector;
 pub mod logging;
 pub mod renderer;
 pub mod resources;
+pub mod query;
 
 pub mod utils {
     pub mod log_plugin;

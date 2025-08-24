@@ -125,14 +125,61 @@ impl Plugin for EditorPlugin {
         app.add_plugins(SystemGraphWindow::default());
         app.add_plugins(GizmosWindow);
         app.add_plugins(SceneWindow);
+        app.add_plugins(bevy_editor_pls_default_windows::query::window::NavWindow);
     }
 }
 
+pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs>){
+    use bevy_editor_pls_core::{editor_window::EditorWindowsCollection};
+    use bevy_editor_pls_default_windows::{prelude::*, query::window::NavWindow};
+    let parent = commands
+        .spawn((Name::new("Editor Windows"), EditorWindowsCollection, Transform::default() /*Transform sync breaks if parent doesn't have transform*/))
+        .id();
+    
+    let i = commands.spawn(InspectorWindow).insert(ChildOf(parent)).id();
+    let nav = commands.spawn(NavWindow).insert(ChildOf(parent)).id();
+    let h = commands.spawn(HierarchyWindow).insert(ChildOf(parent)).id();
+    let r = commands.spawn(ResourcesWindow).insert(ChildOf(parent)).id();
+    let a = commands.spawn(AssetsWindow).insert(ChildOf(parent)).id();
+    
+    let c = commands
+        .spawn((
+            bevy_editor_pls_default_windows::cameras::default_editor_cam(),
+            CameraWindow::default(),
+            ChildOf(parent)
+        ))
+        .id();
+    let c2 = commands.spawn(CameraWindow::default()).insert(ChildOf(parent)).id();
+    
+    tree.state.push_to_first_leaf(c.into());
+    tree.state.push_to_first_leaf(c2.into());
+
+    let [top, bottom] = tree.state.split(
+        (0.into(), 0.into()),
+        egui_dock::Split::Below,
+        0.25,
+        egui_dock::Node::leaf_with(vec![
+            nav.into(),
+            h.into(),
+            r.into(),
+            a.into()
+        ]),
+    );
+
+    
+    let [left, right] = tree.state.split(
+        (0.into(), bottom),
+        egui_dock::Split::Right,
+        0.25,
+        egui_dock::Node::leaf_with(vec![i.into()]),
+    );
+} 
+
 use bevy::prelude::*;
 #[cfg(feature = "default_windows")]
-pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs>) {
+pub fn spawn_default_windows_old(mut commands: Commands, mut tree: ResMut<EditorTabs>) {
     use bevy_editor_pls_core::{editor_window::EditorWindowsCollection};
-    use bevy_editor_pls_default_windows::prelude::*;
+    use bevy_editor_pls_default_windows::{prelude::*, query::window::NavWindow};
     let parent = commands
         .spawn((Name::new("Editor Windows"), EditorWindowsCollection, Transform::default() /*Transform sync breaks if parent doesn't have transform*/))
         .id();
@@ -146,6 +193,7 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
     let d1 = commands.spawn(DebugSettingsWindow).insert(ChildOf(parent)).id();
     let d2 = commands.spawn(DiagnosticsWindow).insert(ChildOf(parent)).id();
     let d3 = commands.spawn(LoggingWindow).insert(ChildOf(parent)).id();
+    let nav = commands.spawn(NavWindow).insert(ChildOf(parent)).id();
 
     let c = commands
         .spawn((
@@ -183,7 +231,7 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
         (0.into(), right),
         egui_dock::Split::Below,
         0.8,
-        egui_dock::Node::leaf_with(vec![d1.into(), d2.into(), d3.into()]),
+        egui_dock::Node::leaf_with(vec![nav.into(), d1.into(), d2.into(), d3.into()]),
     );
 
     if let egui_dock::Node::Leaf { collapsed, .. } = &mut tree.state.main_surface_mut()[bottom] {

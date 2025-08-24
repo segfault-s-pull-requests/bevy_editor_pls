@@ -1,11 +1,19 @@
+use std::time::Instant;
+
+use bevy::diagnostic::{DiagnosticPath, Diagnostics, DiagnosticsStore};
+use bevy::ecs::system::SystemState;
 use bevy::platform::collections::{HashMap, HashSet};
+use bevy::scene::ron::de;
 use bevy::window::WindowMode;
 use bevy::{prelude::*};
 use bevy_inspector_egui::bevy_egui::{egui, EguiContext, EguiContextSettings};
 use bevy_trait_query::One;
+use egui_dock::egui::{Color32, Layout, RichText, UiBuilder};
 use egui_dock::{NodeIndex, SurfaceIndex, TabBarStyle};
 
 use crate::editor_window::{EditorWindow, EditorWindowContext, EditorWindowInstance};
+
+pub const EGUI_EDITOR_RENDERTIME: DiagnosticPath = DiagnosticPath::const_new("egui_editor_rendertime");
 
 #[non_exhaustive]
 #[derive(Event)]
@@ -273,6 +281,8 @@ impl Editor {
         internal_state: &mut EditorTabs,
         editor_events: &mut Events<EditorEvent>,
     ) {
+        // TODO show egui render time
+        let start = Instant::now();
         self.editor_menu_bar(world, ctx, internal_state, editor_events);
 
         if !self.active {
@@ -322,6 +332,12 @@ impl Editor {
         //     }
         //     (Some(_), true) => {}
         // }
+
+        let mut state = SystemState::<Diagnostics>::new(world);
+        let time = start.elapsed().as_secs_f64() * 1000.0;
+        state.get(&world).add_measurement(&EGUI_EDITOR_RENDERTIME, || time);
+        state.apply(world);
+        // dbg!(time);
     }
 
     fn editor_menu_bar(
@@ -352,10 +368,17 @@ impl Editor {
                         window.menu_ui(world, cx, ui);
                     }
                 });
+                ui.add_space(1.0);
+
+                if let Some(diag) = world.resource::<DiagnosticsStore>().get(&EGUI_EDITOR_RENDERTIME) {
+                    let text = format!("editor: {:.2}ms", diag.average().unwrap_or_default());
+                    ui.label(text);
+                }
             })
             .response;
             // .interact(egui::Sense::click());
 
+            // TODO this is broken
             if bar_response.double_clicked() {
                 let mut window = world
                     .query::<&mut Window>()
@@ -372,6 +395,9 @@ impl Editor {
         });
     }
 }
+
+//TODO trait on world to grab cached SystemState for a SystemParam
+// trait WorldSystemParamState
 
 struct TabViewer<'a> {
     editor: &'a mut Editor,
@@ -398,7 +424,21 @@ impl egui_dock::TabViewer for TabViewer<'_> {
             error!("{} >:(", cx.entity);
             return;
         }
+
+        let t = Instant::now();
         self.editor.window_cache[&tab.entity].ui(self.world, cx, ui);
+        let time = t.elapsed().as_micros() as f32 / 1000.0;
+        if time > 0.4 {
+            let text = format!{"⚠ layout: {:.2}ms", time};
+
+            let mut debug_ui = ui.new_child(
+                UiBuilder::new()
+                    .layer_id(egui::LayerId::debug())
+                    .max_rect(ui.max_rect())
+                    .layout(egui::Layout::right_to_left(egui::Align::Max)),
+            );
+            debug_ui.label(RichText::new(time.to_string()).color(Color32::BLACK).background_color(Color32::RED));
+        }
     }
 
     fn context_menu(
