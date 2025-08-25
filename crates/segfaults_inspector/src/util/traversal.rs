@@ -1,0 +1,1 @@
+/// tool for lazy traversing the entity graph.

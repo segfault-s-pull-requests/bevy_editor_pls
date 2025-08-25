@@ -1,4 +1,5 @@
 use std::io::{self, BufRead};
+use std::panic::Location;
 /// yes chatgpt wrote this shit.
 use std::process::{Command, Stdio};
 use std::path::{PathBuf};
@@ -12,6 +13,16 @@ pub fn open_file_at_line(metadata: &Metadata) -> std::io::Result<()> {
         std::io::Error::new(std::io::ErrorKind::NotFound, "No file info in metadata")
     })?;
     let line = metadata.line().unwrap_or(1);
+
+    // Resolve the path — try to canonicalize, falling back if that fails
+    let path = resolve_source_path(file).unwrap_or_else(|| PathBuf::from(file));
+
+    open_in_editor(&path, line)
+}
+
+pub fn open_location(location: &'static Location<'static>) -> std::io::Result<()> {
+    let file = location.file();
+    let line = location.line();
 
     // Resolve the path — try to canonicalize, falling back if that fails
     let path = resolve_source_path(file).unwrap_or_else(|| PathBuf::from(file));
@@ -86,6 +97,7 @@ fn open_in_editor(path: &PathBuf, line: u32) -> std::io::Result<()> {
             .map(|_| ());
     }
 
+    // XXX: all this only tested on linux
     // Fallback: use xdg-open (Linux) or open (macOS)
     #[cfg(target_os = "macos")]
     let fallback = Command::new("open").arg(path).status();
