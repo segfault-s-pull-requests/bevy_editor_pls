@@ -1,19 +1,25 @@
 use std::any::{Any, TypeId};
 use std::cell::UnsafeCell;
-use std::collections::hash_set;
+use std::collections::{hash_set, BTreeMap};
+use std::panic::Location;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use crate::hierarchy::HierarchyState;
+use crate::utils::open::{open_file_at_line, open_location};
 
+use bevy::diagnostic::FrameCount;
 // use super::add::{AddWindow, AddWindowState};
+use bevy::prelude::*;
 use bevy::app::Plugin;
 use bevy::asset::UntypedAssetId;
 use bevy::color::palettes::css::LIGHT_GREY;
 use bevy::ecs::bundle;
 use bevy::ecs::change_detection::DetectChangesMut;
-use bevy::ecs::component::{Component, ComponentId, ComponentInfo, Components};
+use bevy::ecs::component::{Component, ComponentId, ComponentInfo, ComponentTicks, Components, Tick};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::reflect::ReflectComponent;
+use bevy::ecs::resource::Resource;
 use bevy::ecs::world::DynamicComponentFetch;
 use bevy::log::error_once;
 use bevy::log::tracing_subscriber::fmt::format;
@@ -23,15 +29,19 @@ use bevy::prelude::{AppTypeRegistry, World};
 use bevy::reflect::prelude::ReflectDefault;
 use bevy::reflect::{Reflect, TypeInfo, TypePath, TypeRegistry};
 use bevy::render::RenderApp;
+use bevy::state::reflect;
+use bevy::time::TimeSystem;
 use bevy::transform::components;
+use bevy::utils::default;
 use bevy_editor_pls_core::editor_window::{DefaultLink, EditorWindow, EditorWindowContext, Link};
 use bevy_editor_pls_core::AddEditorWindow;
-use bevy_egui::egui::{CollapsingHeader, RichText, Sense};
+use bevy_egui::egui::{lerp, CollapsingHeader, RichText, Sense};
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
 use bevy_inspector_egui::egui_utils::easymark::viewer::easy_mark;
 use bevy_inspector_egui::reflect_inspector::{ui_for_value, InspectorUi};
 use bevy_inspector_egui::restricted_world_view::{RestrictedWorldView};
 use bevy_inspector_egui::{bevy_inspector, egui};
+use bevy_metrics_dashboard::metrics::Key;
 use smallvec::SmallVec;
 use tracing_core::callsite::register;
 use tracing_log::log::info;
@@ -96,6 +106,10 @@ impl Plugin for InspectorWindow {
         app.register_type::<Link<InspectorState>>();
         app.register_type::<DefaultLink<InspectorState>>();
         app.init_resource::<DefaultLink<InspectorState>>();
+
+        app.register_type::<TicksTimer>();
+        app.init_resource::<TicksTimer>();
+        app.add_systems(First, TicksTimer::update_system.after(TimeSystem));
     }
 }
 
@@ -181,6 +195,230 @@ pub fn label_button(ui: &mut egui::Ui, text: &str, text_color: egui::Color32) ->
         .clicked()
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+struct TicksInfo {
+    ticks: Option<ComponentTicks>,
+    changed_by: Option<&'static Location<'static>>
+}
+
+impl TicksInfo {
+    /// function to get changed_by and ticks by id, 
+    /// seems bevy doesn't have a nice function to do this for changed_by yet
+    /// SOMEDAY: deleteme
+    fn get(world: &World, entity: Entity, component: ComponentId) -> Self{
+        // TODO move to function
+        let entity_loc = world.entities().get(entity).unwrap();
+        let arch = world.archetypes().get(entity_loc.archetype_id).unwrap();
+
+        // NOTE this exists but nothing for changed by
+        // world.entity(entity).get_change_ticks_by_id(component);
+
+        let mut ret = Self::default();
+
+        match arch.get_storage_type(component) {
+            None => {}, // Compoenent missing
+            Some(bevy::ecs::component::StorageType::Table) => {
+                let table = world.storages().tables.get(entity_loc.table_id).unwrap();
+                assert!(table.capacity() > entity_loc.table_row.as_usize()); //SAFETY
+                ret.ticks = unsafe { table.get_ticks_unchecked(component, entity_loc.table_row) };
+                
+                let by = table.get_changed_by(component, entity_loc.table_row).into_option().flatten();
+                ret.changed_by = by.map(|cell| unsafe {*cell.get()});
+            },
+            Some(bevy::ecs::component::StorageType::SparseSet) => {
+                let set = world.storages().sparse_sets.get(component).unwrap();
+                ret.ticks = set.get_ticks(entity);
+
+                let by = set.get_changed_by(entity).into_option().flatten();
+                ret.changed_by = by.map(|cell| unsafe {*cell.get()});
+            }
+        };
+
+        ret
+    }
+
+    fn added(&self, world: &mut World) -> Option<bool>{
+        let ticks = self.ticks?;
+        let added = ticks.added.is_newer_than(world.last_change_tick(), world.change_tick());
+        Some(added)
+    }
+
+    fn changed(&self, world: &mut World) -> Option<bool>{
+        let ticks = self.ticks?;
+        let changed = ticks.changed.is_newer_than(world.last_change_tick(), world.change_tick());
+        Some(changed)
+    }
+    
+    fn changed_time(&self, world: &World) -> Option<Duration>{
+        let ticks = self.ticks?;
+        let history = world.get_resource::<TicksTimer>()?;
+        Some(history.now()?.elapsed - history.get_time(ticks.changed)?.elapsed)
+    }
+    
+    fn added_time(&self, world: &World) -> Option<Duration>{
+        let ticks = self.ticks?;
+        let history = world.get_resource::<TicksTimer>()?;
+        Some(history.now()?.elapsed - history.get_time(ticks.added)?.elapsed)
+    }
+}
+
+// #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+// struct OrderWrappedU32(pub u32);
+
+// impl Ord for OrderWrappedU32 {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         let self_to_other = self.0.wrapping_sub(other.0);
+//         let other_to_self = other.0.wrapping_sub(self.0);
+
+//         self_to_other.cmp(&other_to_self)
+//     }
+// }
+
+// impl PartialOrd for OrderWrappedU32 {
+//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+//         Some(self.0.cmp(&other.0))
+//     }
+// }
+
+// #[test]
+// mod test {
+//     use std::{cmp::Ordering, u32};
+
+//     use super::OrderWrappedU32;
+//     fn test_order_wrapped_u32(){
+//         let a = OrderWrappedU32(56);
+//         for b in 0..55 {
+//             assert!(OrderWrappedU32(b) < a);
+//         }
+//         assert_eq!(OrderWrappedU32(56).cmp(a), Ordering::Equal);
+
+//         for b in 57..100 {
+//             assert!(OrderWrappedU32(b) > a);
+//         }
+
+//         // THE PROBLEM
+//         let center = u32::MAX / 2 + 56;
+//         assert_eq!(OrderWrappedU32(center).cmp(a), Ordering::Equal);
+
+//         for b in (center-100)..center {
+//             assert!(OrderWrappedU32(b) > a);
+//         }
+        
+//         for b in (center+1)..(center+100) {
+//             assert!(OrderWrappedU32(b) < a);
+//         }
+
+//         for b in (u32::MAX-100)..u32::MAX {
+//             assert!(OrderWrappedU32(b) < a);
+//         }
+//         assert!(OrderWrappedU32(u32::MAX) < a);
+//     }
+// }
+
+
+#[derive(Debug, Clone, Default, Resource, Reflect)]
+struct TicksTimer{
+    history: BTreeMap<u64, TickMetadata>,
+    wrappings: u32,
+}
+
+/// TODO frame should have enum for accuracy
+/// this should have a custom debug impl
+#[derive(Debug, Copy, Clone, Default, Reflect)]
+struct TickMetadata{
+    tick: Tick,
+    elapsed: Duration,
+    frame: u32,
+}
+
+impl TicksTimer {
+    // should run First after TimeSystem
+    fn update_system(time: Res<Time<Virtual>>, mut history: ResMut<Self>, frame: Res<FrameCount>){
+        // let tick = OrderWrappedU32(history.last_changed().get());
+        let tick = history.last_changed();
+        let tick_u32 = tick.get();
+        let last = history.history.last_key_value().map(|a|*a.0).unwrap_or_default();
+        if tick_u32 < last as u32 {
+            //u32 wrap
+            history.wrappings += 1;
+        }
+        let tick_u64 = tick_u32 as u64 | (history.wrappings as u64) << 32;
+        let time = time.elapsed();
+
+        #[cfg(debug_assertions)]
+        if let Some((last_tick, last_time)) = history.history.last_key_value() {
+            assert!(tick_u64 > *last_tick);
+            assert!(time > last_time.elapsed);
+            assert!(frame.0 > last_time.frame);
+        }
+        
+        history.history.insert(tick_u64, TickMetadata { tick, elapsed: time, frame: frame.0 });
+        history.filter_old();
+    }
+
+    fn filter_old(&mut self){
+        let first = self.history.first_key_value().unwrap();
+        let mut prev_time = first.1.elapsed;
+        let first_tick = *first.0;
+
+        let now = self.history.last_key_value().unwrap().1.elapsed;
+        self.history.retain(|&tick, &mut data| {
+            assert!(first_tick <= tick);
+            assert!(prev_time <= data.elapsed);
+            assert!(now >= data.elapsed);
+
+            if tick == first_tick {
+                return true;
+            }
+            // just use u64
+            // if tick.0.wrapping_sub(&k.0) >= u32::MAX / 2 {
+            //     // auto wrapping btree can't handle using more than half the int range.
+            //     return false;
+            // }
+
+            // 0.5%
+            let resolution = (now - data.elapsed).div_f32(200.0);
+            let to_remove = (data.elapsed - prev_time) < resolution;
+            if to_remove {
+                return false;
+            }else{
+                prev_time = data.elapsed;
+                return true;
+            }
+        });
+
+        //dbg!(self.history.len());
+    }
+
+    /// returns duration since app start associated with the tick.
+    fn get_time(&self, tick2: Tick) -> Option<TickMetadata> {
+        let tick = tick2.get() as u64 | ((self.wrappings as u64) << 32);
+
+        let Some(b) = self.history.range(tick..).next() else {
+            // tick is newer than start of frame
+            return self.now();
+        };
+
+        let Some(a) = self.history.range(..=tick).next_back() else {
+            // tick is older than first frame, weird.
+            return None;
+        };
+
+        if tick == *a.0 {
+            return Some(*a.1)
+        }
+        
+        let factor = (tick - a.0) as f32 / (b.0 - a.0) as f32;
+        let lerp = |a, b:Duration, f| ( b - a ).mul_f32(f) + a; 
+        let lerp2 = |a, b, f| ((b as f32 - a as f32) * f + a as f32) as u32; 
+        Some(TickMetadata { tick: tick2, elapsed: lerp(a.1.elapsed, b.1.elapsed, factor), frame: lerp2(a.1.frame, b.1.frame, factor) })
+    }
+
+    fn now(&self) -> Option<TickMetadata> {
+        Some(*self.history.last_key_value()?.1)
+    }
+}
+
 fn new_inspector(
     world: &mut World,
     entity: Entity,
@@ -221,36 +459,12 @@ fn new_inspector(
                         for id in bundle.iter() {
                             let info = plan.info.get(id).unwrap();
                             let in_bundle = path_set.contains(id);
+                            let active = world.entity(entity).contains_id(*id);
 
-                            // TODO move to function
-                            let entity_loc = world.entities().get(entity).unwrap();
-                            let arch = world.archetypes().get(entity_loc.archetype_id).unwrap();
-                            let mut active = true;
-
-                            let ticks = match arch.get_storage_type(*id) {
-                                None => {
-                                    // NOTE: a required component has been removed
-                                    active = false;
-                                    None
-                                },
-                                Some(bevy::ecs::component::StorageType::Table) => {
-                                    let table = world.storages().tables.get(entity_loc.table_id).unwrap();
-                                    assert!(table.capacity() > entity_loc.table_row.as_usize()); //SAFETY
-                                    unsafe { table.get_ticks_unchecked(*id, entity_loc.table_row) }
-                                },
-                                Some(bevy::ecs::component::StorageType::SparseSet) => {
-                                    let set = world.storages().sparse_sets.get(*id).unwrap();
-                                    set.get_ticks(entity)
-                                }
-                            };
-
-                            let mut changed = None;
-                            let mut added = None;
-                            if let Some(ticks) = ticks {
-                                changed = Some(ticks.changed.is_newer_than(world.last_change_tick(), world.change_tick()));
-                                added = Some(ticks.added.is_newer_than(world.last_change_tick(), world.change_tick()));
-                            }
-
+                            let ticks = TicksInfo::get(&world, entity, *id);
+                            let added = ticks.added(world);
+                            let changed = ticks.changed(world);
+                            
                             let reflect = info
                                 .info
                                 .type_id()
@@ -371,6 +585,31 @@ fn reflect_is_default(reflect: &dyn Reflect, type_registry: &TypeRegistry) -> Op
     }
 }
 
+fn show_duration(d: Duration) -> String{
+    if d < Duration::from_millis(100){
+        format!("{}ms", d.as_millis())
+    }else if d < Duration::from_secs(60) {
+        format!("{}s", d.as_secs())
+    }else if d < Duration::from_secs(60*10) {
+        format!("{:.1}m", d.as_secs_f32() / 60.0)
+    }else if d < Duration::from_secs(60 * 60) {
+        format!("{}m", d.as_secs() / 60)
+    }else{
+        let mut t = d.as_secs();
+        let days = t / (3600*24);
+        t -= days * (3600*24);
+        let hours = t / 3600;
+        t -= hours * (3600);
+        let mins = t / 60;
+
+        if days == 0 {
+            format!("{hours}h{mins}m")
+        }else{
+            format!("{days}d{hours}h{mins}m")
+        }
+    }
+}
+
 // from bevy_inspector_egui
 // pub fn show_docs() {
 //     let mut end_idx = docs.len();
@@ -428,6 +667,10 @@ fn ui_for_entity_component(
         return;
     }
 
+
+    let ticks = TicksInfo::get(&world, entity, component.info.id());
+    let added = ticks.added_time(world);
+    let changed = ticks.changed_time(world);
 
     let id = ui.auto_id_with(component.info.id()).with(entity);
 
@@ -489,8 +732,36 @@ fn ui_for_entity_component(
             bevy_inspector_egui::restricted_world_view::ReflectBorrow::Immutable(value) => env
                 .ui_for_reflect_readonly_with_options(value.as_partial_reflect(), ui, id, options),
         };
+
+        if added.is_some() || changed.is_some() {
+            ui.style_mut().interaction.selectable_labels = false;// required for interact(hover).on_hover_ui below to work
+            ui.horizontal(|ui|{
+                if let Some(d) = changed {
+                    let text = format!("changed: {}  ", show_duration(d));
+                    ui.label(RichText::new(text).small());
+                }
+                if let Some(d) = added {
+                    let text = format!("added: {}  ", show_duration(d));
+                    ui.label(RichText::new(text).small());
+                }
+            }).response.interact(Sense::hover()).on_hover_ui(|ui|{
+                // TODO frames
+
+                if let Some(by) =  ticks.changed_by {
+                    // TODO function
+                    if ui.link(RichText::new(by.to_string())).clicked(){
+                        let _ = open_location(by).inspect_err(|e| error!("{}", e));
+                    }
+                }
+            });
+        }
+
+        // NOTE: too much visual clutter
+        // if let Some(by) =  ticks.changed_by {
+        //     ui.label(RichText::new(by.to_string()).small());
+        // }
     
-        CollapsingHeader::new("Component Info:").show(ui, |ui| {
+        CollapsingHeader::new(RichText::new("Component Info:").weak().small()).show(ui, |ui| {
             let name = component.info.name();
             ui.label(format!("Name: {}", name));
 
@@ -547,7 +818,20 @@ fn ui_for_entity_component(
             }else{
                 ui.label("Required By: None **for current entity, FIXME!**");
             }
-                
+
+            ui.add_space(10.0);
+            if let Some(t) = ticks.ticks {
+                // TODO this should be a struct that get's debug printed
+                ui.label(format!("Ticks: {:?}", t));
+                ui.label(format!("Added: {:?}", added));
+                ui.label(format!("Changed: {:?}", changed));
+            }
+            if let Some(loc) = ticks.changed_by {
+                if ui.link(format!("Changed By: {:?}", loc.to_string())).clicked(){
+                    let _ = open_location(loc).inspect_err(|e| error!("{}", e));
+                }
+            }
+
             if let Some(type_info) = component.type_info {
                 // let generics = type_info.generics();
                 // ui.label(format!("{:?}", generics));
