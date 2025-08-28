@@ -36,6 +36,7 @@ use bevy::utils::default;
 use bevy_editor_pls_core::editor_window::{DefaultLink, EditorWindow, EditorWindowContext, Link};
 use bevy_editor_pls_core::AddEditorWindow;
 use bevy_egui::egui::{lerp, CollapsingHeader, RichText, Sense};
+use bevy_inspector_egui::bevy_inspector::guess_entity_name;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
 use bevy_inspector_egui::egui_utils::easymark::viewer::easy_mark;
 use bevy_inspector_egui::reflect_inspector::{ui_for_value, InspectorUi};
@@ -63,8 +64,7 @@ pub struct InspectorState {
     pub component_selected: Vec<ComponentId>,
 
     // TODO for restoring state
-    // pub changed: bool, 
-
+    // pub changed: bool,
     /// put components in categories
     pub by_crate: bool,
 }
@@ -101,11 +101,11 @@ impl EditorWindow for InspectorWindow {
         *cx.get_mut::<InspectorState>(world).unwrap() = selected;
     }
 
-    fn context_menu(&self,world: &mut World,cx:EditorWindowContext,ui: &mut egui::Ui) {
+    fn context_menu(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
         let type_registry = world.resource::<AppTypeRegistry>().0.clone();
         let type_registry = type_registry.read();
         let mut selected = cx.get::<InspectorState>(world).unwrap().clone(); // TODO don't clone
-        
+
         ui_for_value(selected.as_partial_reflect_mut(), ui, &type_registry);
 
         *cx.get_mut::<InspectorState>(world).unwrap() = selected;
@@ -149,17 +149,17 @@ fn inspector(
                         ui,
                         type_registry,
                         &mut selected.component_selected,
-                        selected.by_crate
+                        selected.by_crate,
                     );
 
                     ui.vertical(|ui| {
+                        ui.label(guess_entity_name(&world, entity)); //TODO cleanup
                         for c in selected.component_selected.iter() {
                             let component =
                                 CompInfo::try_from_world(&world, *c, type_registry, None).unwrap();
                             ui_for_entity_component(world, component, entity, ui, type_registry);
                         }
                     });
-
                 });
             }
             entities => {
@@ -212,14 +212,14 @@ pub fn label_button(ui: &mut egui::Ui, text: &str, text_color: egui::Color32) ->
 #[derive(Debug, Default, Clone, Copy)]
 struct TicksInfo {
     ticks: Option<ComponentTicks>,
-    changed_by: Option<&'static Location<'static>>
+    changed_by: Option<&'static Location<'static>>,
 }
 
 impl TicksInfo {
-    /// function to get changed_by and ticks by id, 
+    /// function to get changed_by and ticks by id,
     /// seems bevy doesn't have a nice function to do this for changed_by yet
     /// SOMEDAY: deleteme
-    fn get(world: &World, entity: Entity, component: ComponentId) -> Self{
+    fn get(world: &World, entity: Entity, component: ComponentId) -> Self {
         // TODO move to function
         let entity_loc = world.entities().get(entity).unwrap();
         let arch = world.archetypes().get(entity_loc.archetype_id).unwrap();
@@ -230,46 +230,53 @@ impl TicksInfo {
         let mut ret = Self::default();
 
         match arch.get_storage_type(component) {
-            None => {}, // Compoenent missing
+            None => {} // Compoenent missing
             Some(bevy::ecs::component::StorageType::Table) => {
                 let table = world.storages().tables.get(entity_loc.table_id).unwrap();
                 assert!(table.capacity() > entity_loc.table_row.as_usize()); //SAFETY
                 ret.ticks = unsafe { table.get_ticks_unchecked(component, entity_loc.table_row) };
-                
-                let by = table.get_changed_by(component, entity_loc.table_row).into_option().flatten();
-                ret.changed_by = by.map(|cell| unsafe {*cell.get()});
-            },
+
+                let by = table
+                    .get_changed_by(component, entity_loc.table_row)
+                    .into_option()
+                    .flatten();
+                ret.changed_by = by.map(|cell| unsafe { *cell.get() });
+            }
             Some(bevy::ecs::component::StorageType::SparseSet) => {
                 let set = world.storages().sparse_sets.get(component).unwrap();
                 ret.ticks = set.get_ticks(entity);
 
                 let by = set.get_changed_by(entity).into_option().flatten();
-                ret.changed_by = by.map(|cell| unsafe {*cell.get()});
+                ret.changed_by = by.map(|cell| unsafe { *cell.get() });
             }
         };
 
         ret
     }
 
-    fn added(&self, world: &mut World) -> Option<bool>{
+    fn added(&self, world: &mut World) -> Option<bool> {
         let ticks = self.ticks?;
-        let added = ticks.added.is_newer_than(world.last_change_tick(), world.change_tick());
+        let added = ticks
+            .added
+            .is_newer_than(world.last_change_tick(), world.change_tick());
         Some(added)
     }
 
-    fn changed(&self, world: &mut World) -> Option<bool>{
+    fn changed(&self, world: &mut World) -> Option<bool> {
         let ticks = self.ticks?;
-        let changed = ticks.changed.is_newer_than(world.last_change_tick(), world.change_tick());
+        let changed = ticks
+            .changed
+            .is_newer_than(world.last_change_tick(), world.change_tick());
         Some(changed)
     }
-    
-    fn changed_time(&self, world: &World) -> Option<Duration>{
+
+    fn changed_time(&self, world: &World) -> Option<Duration> {
         let ticks = self.ticks?;
         let history = world.get_resource::<TicksTimer>()?;
         Some(history.now()?.elapsed - history.get_time(ticks.changed)?.elapsed)
     }
-    
-    fn added_time(&self, world: &World) -> Option<Duration>{
+
+    fn added_time(&self, world: &World) -> Option<Duration> {
         let ticks = self.ticks?;
         let history = world.get_resource::<TicksTimer>()?;
         Some(history.now()?.elapsed - history.get_time(ticks.added)?.elapsed)
@@ -317,7 +324,7 @@ impl TicksInfo {
 //         for b in (center-100)..center {
 //             assert!(OrderWrappedU32(b) > a);
 //         }
-        
+
 //         for b in (center+1)..(center+100) {
 //             assert!(OrderWrappedU32(b) < a);
 //         }
@@ -329,9 +336,8 @@ impl TicksInfo {
 //     }
 // }
 
-
 #[derive(Debug, Clone, Default, Resource, Reflect)]
-struct TicksTimer{
+struct TicksTimer {
     history: BTreeMap<u64, TickMetadata>,
     wrappings: u32,
 }
@@ -339,7 +345,7 @@ struct TicksTimer{
 /// TODO frame should have enum for accuracy
 /// this should have a custom debug impl
 #[derive(Debug, Copy, Clone, Default, Reflect)]
-struct TickMetadata{
+struct TickMetadata {
     tick: Tick,
     elapsed: Duration,
     frame: u32,
@@ -347,11 +353,15 @@ struct TickMetadata{
 
 impl TicksTimer {
     // should run First after TimeSystem
-    fn update_system(time: Res<Time<Virtual>>, mut history: ResMut<Self>, frame: Res<FrameCount>){
+    fn update_system(time: Res<Time<Virtual>>, mut history: ResMut<Self>, frame: Res<FrameCount>) {
         // let tick = OrderWrappedU32(history.last_changed().get());
         let tick = history.last_changed();
         let tick_u32 = tick.get();
-        let last = history.history.last_key_value().map(|a|*a.0).unwrap_or_default();
+        let last = history
+            .history
+            .last_key_value()
+            .map(|a| *a.0)
+            .unwrap_or_default();
         if tick_u32 < last as u32 {
             //u32 wrap
             history.wrappings += 1;
@@ -365,12 +375,19 @@ impl TicksTimer {
             assert!(time > last_time.elapsed);
             assert!(frame.0 > last_time.frame);
         }
-        
-        history.history.insert(tick_u64, TickMetadata { tick, elapsed: time, frame: frame.0 });
+
+        history.history.insert(
+            tick_u64,
+            TickMetadata {
+                tick,
+                elapsed: time,
+                frame: frame.0,
+            },
+        );
         history.filter_old();
     }
 
-    fn filter_old(&mut self){
+    fn filter_old(&mut self) {
         let first = self.history.first_key_value().unwrap();
         let mut prev_time = first.1.elapsed;
         let first_tick = *first.0;
@@ -395,7 +412,7 @@ impl TicksTimer {
             let to_remove = (data.elapsed - prev_time) < resolution;
             if to_remove {
                 return false;
-            }else{
+            } else {
                 prev_time = data.elapsed;
                 return true;
             }
@@ -419,13 +436,17 @@ impl TicksTimer {
         };
 
         if tick == *a.0 {
-            return Some(*a.1)
+            return Some(*a.1);
         }
-        
+
         let factor = (tick - a.0) as f32 / (b.0 - a.0) as f32;
-        let lerp = |a, b:Duration, f| ( b - a ).mul_f32(f) + a; 
-        let lerp2 = |a, b, f| ((b as f32 - a as f32) * f + a as f32) as u32; 
-        Some(TickMetadata { tick: tick2, elapsed: lerp(a.1.elapsed, b.1.elapsed, factor), frame: lerp2(a.1.frame, b.1.frame, factor) })
+        let lerp = |a, b: Duration, f| (b - a).mul_f32(f) + a;
+        let lerp2 = |a, b, f| ((b as f32 - a as f32) * f + a as f32) as u32;
+        Some(TickMetadata {
+            tick: tick2,
+            elapsed: lerp(a.1.elapsed, b.1.elapsed, factor),
+            frame: lerp2(a.1.frame, b.1.frame, factor),
+        })
     }
 
     fn now(&self) -> Option<TickMetadata> {
@@ -440,7 +461,7 @@ fn new_inspector(
     // add_window_state: Option<&AddWindowState>,
     type_registry: &TypeRegistry,
     selected: &mut Vec<ComponentId>,
-    use_collapsing: bool // TODO switch so this func takes the whole state struct
+    use_collapsing: bool, // TODO switch so this func takes the whole state struct
 ) {
     ui.style_mut().interaction.selectable_labels = false;
     let plan = ComponentPlan::bundle_components(world, entity, type_registry);
@@ -486,6 +507,9 @@ fn new_inspector(
                     let is_default = reflect
                         .and_then(|r| reflect_is_default(r.as_reflect(), type_registry));
 
+                    let is_marker_type = info.info.layout().size() == 0;
+                    let is_relation_like = info.type_info.map(|t|relation_like(t)).flatten();
+
                     // TODO visual indication of required_component arrows
                     ui.horizontal(|ui| {
                         // change detection
@@ -505,7 +529,25 @@ fn new_inspector(
                         ui.label(text.monospace().color(Color32::GRAY));
 
                         // primary label (name)
-                        let mut text = RichText::new(info.short_name());
+                        let mut text = info.short_name();
+                        if is_marker_type {
+                            // text = format!("::{}::", text);
+                            text = format!("@{}", text); // not sure which is better. both feel busy
+                        }
+                        // TODO not happy with this display. It's busy
+                        match is_relation_like {
+                            Some(RelationLike::Relation) => {
+                                text += "->";
+                            }
+                            Some(RelationLike::Option) => {
+                                text += "?>";
+                            }
+                            Some(RelationLike::Target) => {
+                                text += "<-";
+                            }
+                            None => {},
+                        };
+                        let mut text = RichText::new(text);
                         if ! in_bundle {
                             text = text.weak();
                         }
@@ -551,14 +593,16 @@ fn new_inspector(
                         }
 
                         // is_default sigil
-                        match is_default {
-                            Some(true) => {
-                                ui.label(RichText::new("D").small_raised().weak());
+                        if !is_marker_type {
+                            match is_default {
+                                Some(true) => {
+                                    ui.label(RichText::new("D").small_raised().weak());
+                                }
+                                Some(false) => {
+                                    // ui.label("not default");
+                                }
+                                None => {}
                             }
-                            Some(false) => {
-                                // ui.label("not default");
-                            }
-                            None => {}
                         }
                     });
                 }
@@ -609,26 +653,26 @@ fn reflect_is_default(reflect: &dyn Reflect, type_registry: &TypeRegistry) -> Op
     }
 }
 
-fn show_duration(d: Duration) -> String{
-    if d < Duration::from_millis(100){
+fn show_duration(d: Duration) -> String {
+    if d < Duration::from_millis(100) {
         format!("{}ms", d.as_millis())
-    }else if d < Duration::from_secs(60) {
+    } else if d < Duration::from_secs(60) {
         format!("{}s", d.as_secs())
-    }else if d < Duration::from_secs(60*10) {
+    } else if d < Duration::from_secs(60 * 10) {
         format!("{:.1}m", d.as_secs_f32() / 60.0)
-    }else if d < Duration::from_secs(60 * 60) {
+    } else if d < Duration::from_secs(60 * 60) {
         format!("{}m", d.as_secs() / 60)
-    }else{
+    } else {
         let mut t = d.as_secs();
-        let days = t / (3600*24);
-        t -= days * (3600*24);
+        let days = t / (3600 * 24);
+        t -= days * (3600 * 24);
         let hours = t / 3600;
         t -= hours * (3600);
         let mins = t / 60;
 
         if days == 0 {
             format!("{hours}h{mins}m")
-        }else{
+        } else {
             format!("{days}d{hours}h{mins}m")
         }
     }
@@ -691,7 +735,6 @@ fn ui_for_entity_component(
         return;
     }
 
-
     let ticks = TicksInfo::get(&world, entity, component.info.id());
     let added = ticks.added_time(world);
     let changed = ticks.changed_time(world);
@@ -702,7 +745,8 @@ fn ui_for_entity_component(
 
     // create a context with access to the world except for the currently viewed componen
     let mut binding = RestrictedWorldView::from(&mut world);
-    let (mut component_view, split_world) = binding.split_off_component((entity, type_info.type_id()));
+    let (mut component_view, split_world) =
+        binding.split_off_component((entity, type_info.type_id()));
     let mut cx = bevy_inspector_egui::reflect_inspector::Context {
         world: Some(split_world),
         #[allow(clippy::needless_option_as_deref)]
@@ -731,7 +775,9 @@ fn ui_for_entity_component(
     //     set_highlight_style(ui);
     // }
 
-    let header = egui::CollapsingHeader::new(name).id_salt(id).default_open(true); //TODO move
+    let header = egui::CollapsingHeader::new(name)
+        .id_salt(id)
+        .default_open(true); //TODO move
     let response = header.show(ui, |ui| {
         ui.reset_style();
 
@@ -758,8 +804,8 @@ fn ui_for_entity_component(
         };
 
         if added.is_some() || changed.is_some() {
-            ui.style_mut().interaction.selectable_labels = false;// required for interact(hover).on_hover_ui below to work
-            ui.horizontal(|ui|{
+            ui.style_mut().interaction.selectable_labels = false; // required for interact(hover).on_hover_ui below to work
+            ui.horizontal(|ui| {
                 if let Some(d) = changed {
                     let text = format!("changed: {}  ", show_duration(d));
                     ui.label(RichText::new(text).small());
@@ -768,12 +814,15 @@ fn ui_for_entity_component(
                     let text = format!("added: {}  ", show_duration(d));
                     ui.label(RichText::new(text).small());
                 }
-            }).response.interact(Sense::hover()).on_hover_ui(|ui|{
+            })
+            .response
+            .interact(Sense::hover())
+            .on_hover_ui(|ui| {
                 // TODO frames
 
-                if let Some(by) =  ticks.changed_by {
+                if let Some(by) = ticks.changed_by {
                     // TODO function
-                    if ui.link(RichText::new(by.to_string())).clicked(){
+                    if ui.link(RichText::new(by.to_string())).clicked() {
                         let _ = open_location(by).inspect_err(|e| error!("{}", e));
                     }
                 }
@@ -784,7 +833,7 @@ fn ui_for_entity_component(
         // if let Some(by) =  ticks.changed_by {
         //     ui.label(RichText::new(by.to_string()).small());
         // }
-    
+
         CollapsingHeader::new(RichText::new("Component Info:").weak().small()).show(ui, |ui| {
             let name = component.info.name();
             ui.label(format!("Name: {}", name));
@@ -798,7 +847,7 @@ fn ui_for_entity_component(
             let layout = component.info.layout();
             ui.label(format!("Layout: {:?}", layout));
             // ui.label(format!("Layout: align = {}, size = {}", layout.align(), layout.size()));
-            
+
             // let clone_behavior = match component.info.clone_behavior(){
             //     bevy::ecs::component::ComponentCloneBehavior::Default => "default",
             //     bevy::ecs::component::ComponentCloneBehavior::Ignore => "ignore",
@@ -806,7 +855,7 @@ fn ui_for_entity_component(
             // };
             let clone_behavior = component.info.clone_behavior();
             ui.label(format!("Clone Behavior: {:?}", clone_behavior));
-            
+
             // TODO, bevy should make this introspectible
             let hooks = component.info.hooks();
             ui.label(format!("{:#?}", hooks));
@@ -818,28 +867,34 @@ fn ui_for_entity_component(
             // Or come up with better logic for spliting world access
             let world = env.context.world.as_ref().unwrap();
             ui.add_space(10.0);
-            if component.info.required_components().iter_ids().next().is_some() {
-                CollapsingHeader::new("Required Components").show(ui, |ui|{
-                    for r in component.info.required_components().iter_ids(){
+            if component
+                .info
+                .required_components()
+                .iter_ids()
+                .next()
+                .is_some()
+            {
+                CollapsingHeader::new("Required Components").show(ui, |ui| {
+                    for r in component.info.required_components().iter_ids() {
                         // TODO recursive, + handle cycles gracefully
                         let text = world.components().get_info(r).unwrap().name();
                         ui.label(text);
                     }
                 });
-            }else{
+            } else {
                 ui.label("Required Components: None");
             }
-            
-            if !component.required_by.is_empty(){
-                CollapsingHeader::new("Required By").show(ui, |ui|{
+
+            if !component.required_by.is_empty() {
+                CollapsingHeader::new("Required By").show(ui, |ui| {
                     ui.label("**current entity's components only, FIXME**");
-                    for r in component.required_by.iter(){
+                    for r in component.required_by.iter() {
                         // TODO recursive, + handle cycles gracefully
                         let text = world.components().get_info(*r).unwrap().name();
                         ui.label(text);
                     }
                 });
-            }else{
+            } else {
                 ui.label("Required By: None **for current entity, FIXME!**");
             }
 
@@ -851,7 +906,10 @@ fn ui_for_entity_component(
                 ui.label(format!("Changed: {:?}", changed));
             }
             if let Some(loc) = ticks.changed_by {
-                if ui.link(format!("Changed By: {:?}", loc.to_string())).clicked(){
+                if ui
+                    .link(format!("Changed By: {:?}", loc.to_string()))
+                    .clicked()
+                {
                     let _ = open_location(loc).inspect_err(|e| error!("{}", e));
                 }
             }
@@ -863,30 +921,30 @@ fn ui_for_entity_component(
                 // let file_lineno = "unimplemented";
                 // ui.label(format!("File/LineNo: {}", file_lineno));
 
-                if let Some(reg) = type_registry.get(type_info.type_id()){
+                if let Some(reg) = type_registry.get(type_info.type_id()) {
                     ui.add_space(10.0);
                     ui.label("Type Data:");
-                    
+
                     if let Some(def) = reg.data::<ReflectDefault>() {
-                        CollapsingHeader::new("ReflectDefault").show(ui, |ui|{
+                        CollapsingHeader::new("ReflectDefault").show(ui, |ui| {
                             env.ui_for_reflect_readonly(def.default().as_ref(), ui);
                         });
                     }
 
                     // type_info doesn't have type data
-                    for (id,_) in reg.iter() {
+                    for (id, _) in reg.iter() {
                         // skip those manually handled above
                         if id == TypeId::of::<ReflectDefault>() {
                             continue;
                         }
 
-                        match type_registry.get_type_info(id){
+                        match type_registry.get_type_info(id) {
                             Some(v) => {
                                 ui.label(v.type_path_table().short_path());
-                            },
+                            }
                             None => {
                                 ui.label(format!("unknown type data {:?}", id));
-                            },
+                            }
                         }
                     }
                 }
@@ -896,7 +954,7 @@ fn ui_for_entity_component(
                         bevy_inspector_egui::egui_utils::easymark(ui, &docs);
                     });
                 }
-            } 
+            }
         });
     });
 
@@ -911,6 +969,8 @@ fn ui_for_entity_component(
     ui.reset_style();
 }
 
+#[derive(Debug, Clone)]
+
 pub struct CompInfo {
     pub info: ComponentInfo,
     pub type_info: Option<&'static TypeInfo>,
@@ -919,7 +979,7 @@ pub struct CompInfo {
 }
 
 impl CompInfo {
-    fn try_from_world(
+    pub fn try_from_world(
         world: &World,
         c_id: ComponentId,
         registry: &TypeRegistry,
@@ -938,7 +998,7 @@ impl CompInfo {
         Some(Self {
             info,
             type_info,
-            required_by: Default::default(),
+            required_by: Default::default(), // XXX should be None, to force init
             registered,
         })
     }
@@ -948,16 +1008,20 @@ impl CompInfo {
         static RE: OnceLock<regex::Regex> = OnceLock::new();
         let re = RE.get_or_init(|| regex::Regex::new(pattern).unwrap());
 
-        if let Some(m) = re.captures(self.info.name()){
+        if let Some(m) = re.captures(self.info.name()) {
             let name = m.name("name").unwrap().as_str();
             let generic = m.name("generic");
 
-            if generic.is_none(){
+            if generic.is_none() {
                 name.into()
-            }else{
-                format!("{}<{}>", name, re.find(generic.unwrap().as_str()).unwrap().as_str())
+            } else {
+                format!(
+                    "{}<{}>",
+                    name,
+                    re.find(generic.unwrap().as_str()).unwrap().as_str()
+                )
             }
-        }else{
+        } else {
             // weird
             panic!("weird");
             self.info.name().into()
@@ -968,11 +1032,12 @@ impl CompInfo {
         let pattern = r"^(\w+::)+";
         static RE: OnceLock<regex::Regex> = OnceLock::new();
         let re = RE.get_or_init(|| regex::Regex::new(pattern).unwrap());
-        if let Some(m) = re.find(self.info.name()){
+        if let Some(m) = re.find(self.info.name()) {
             m.as_str()
-        }else{
+        } else {
             ""
-        }.into()
+        }
+        .into()
     }
 }
 
@@ -980,7 +1045,7 @@ impl CompInfo {
 
 type ComponentGroup = Vec<ComponentId>;
 
-static BEVY_CRATES : OnceLock<HashSet<String>> = OnceLock::new();
+static BEVY_CRATES: OnceLock<HashSet<String>> = OnceLock::new();
 fn is_bevy_crate(c: &str) -> bool {
     // BEVY_CRATES.get_or_init(|| vec![
     //     "bevy_ecs".to_string(),
@@ -1003,7 +1068,7 @@ impl ComponentPlan {
         let subset = if path == "" {
             a = self.info.keys().cloned().collect();
             &a
-        }else{
+        } else {
             self.path.get(path)?
         };
 
@@ -1075,8 +1140,8 @@ impl ComponentPlan {
                 // todo override with registration.
                 type_info.type_path().split("::").next().unwrap_or_default()
             } else {
-                match info.info.name().split_once("::"){
-                    Some(s) => s.0, // grab crate name from component name
+                match info.info.name().split_once("::") {
+                    Some(s) => s.0,           // grab crate name from component name
                     None => "_unregistered_", // not a rust type
                 }
             };
@@ -1097,28 +1162,53 @@ impl ComponentPlan {
         }
     }
 
-
-    fn paths(&self) -> Vec<String>{
-        let mut keys : Vec<_> = self.path.keys().cloned().collect();
+    fn paths(&self) -> Vec<String> {
+        let mut keys: Vec<_> = self.path.keys().cloned().collect();
         keys.sort_by_cached_key(|id| (id == "", !is_bevy_crate(id), id.to_string()));
         keys
     }
 }
 
-fn relation_like(type_info: &'static TypeInfo) -> Option<String> {
+#[derive(Debug, Clone, Copy)]
+pub enum RelationLike {
+    Relation,
+    Target,
+    Option,
+}
+
+pub fn relation_like(type_info: &'static TypeInfo) -> Option<RelationLike> {
+    fn check_type(typ: &bevy::reflect::Type) -> Option<RelationLike> {
+        if typ.is::<Entity>() {
+            // return Some(format!(".{}", v.name()));
+            return Some(RelationLike::Relation);
+        }
+        if typ.is::<Option<Entity>>() {
+            // return Some(format!(".{}", v.name()));
+            return Some(RelationLike::Option);
+        }
+        // TODO other containers
+        if typ.is::<Vec<Entity>>() {
+            // return Some(format!(".{}", v.name()));
+            return Some(RelationLike::Target);
+        }
+        None
+    }
+
     match type_info.kind() {
         bevy::reflect::ReflectKind::Struct => {
             for v in type_info.as_struct().unwrap().iter() {
-                if v.is::<Entity>() {
-                    return Some(format!(".{}", v.name()));
-                }
+                let r = check_type(v.ty());
+                if r.is_some() {
+                    return r;
+                };
             }
         }
         bevy::reflect::ReflectKind::TupleStruct => {
             for v in type_info.as_tuple_struct().unwrap().iter() {
-                if v.is::<Entity>() {
-                    return Some(format!(".{}", v.index()));
-                }
+                let r = check_type(v.ty());
+                if r.is_some() {
+                    return r;
+                };
             }
         }
         _ => {} // bevy::reflect::ReflectKind::Tuple => todo!(),
