@@ -63,7 +63,9 @@ pub struct InspectorState {
     pub component_selected: Vec<ComponentId>,
 
     // TODO for restoring state
-    pub changed: bool,
+    // pub changed: bool,
+    /// put components in categories
+    pub by_crate: bool,
 }
 
 #[derive(Debug, Default, Component, Clone, Copy)]
@@ -95,6 +97,16 @@ impl EditorWindow for InspectorWindow {
         );
 
         // TODO change detect fix
+        *cx.get_mut::<InspectorState>(world).unwrap() = selected;
+    }
+
+    fn context_menu(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
+        let type_registry = world.resource::<AppTypeRegistry>().0.clone();
+        let type_registry = type_registry.read();
+        let mut selected = cx.get::<InspectorState>(world).unwrap().clone(); // TODO don't clone
+
+        ui_for_value(selected.as_partial_reflect_mut(), ui, &type_registry);
+
         *cx.get_mut::<InspectorState>(world).unwrap() = selected;
     }
 }
@@ -136,6 +148,7 @@ fn inspector(
                         ui,
                         type_registry,
                         &mut selected.component_selected,
+                        selected.by_crate,
                     );
 
                     ui.vertical(|ui| {
@@ -446,132 +459,142 @@ fn new_inspector(
     // add_window_state: Option<&AddWindowState>,
     type_registry: &TypeRegistry,
     selected: &mut Vec<ComponentId>,
+    use_collapsing: bool, // TODO switch so this func takes the whole state struct
 ) {
+    ui.style_mut().interaction.selectable_labels = false;
     let plan = ComponentPlan::bundle_components(world, entity, type_registry);
 
-    ui.vertical(|ui| {
-        // let mut drawn = HashSet::with_capacity(ps.len());
-        for crate_name in plan.paths() {
-            let path_set = plan.path.get(&crate_name).unwrap();
-            let bundles = plan.bundles_for_path(&crate_name).unwrap();
+    // Closure for drawing the UI for a given path
+    let mut draw_path_ui = |ui: &mut egui::Ui, crate_name: &str| {
+        let path_set = plan.path.get(crate_name);
+        let bundles = plan.bundles_for_path(crate_name).unwrap();
 
-            egui::CollapsingHeader::new(crate_name).show(ui, |ui| {
-                for bundle in bundles.iter() {
-                    let bundle_selected = bundle.iter().any(|id| selected.contains(id));
+        for bundle in bundles.iter() {
+            let bundle_selected = bundle.iter().any(|id| selected.contains(id));
 
-                    // todo make function
-                    let mut resp = egui::Frame::new();
-                    if bundle.len() > 1 {
-                        resp = resp.corner_radius(1.0).stroke(bevy_egui::egui::Stroke {
-                            width: 1.0,
-                            color: egui::Color32::BLACK,
-                        });
-                        if bundle_selected {
-                            // resp = resp.fill(Color32::from_rgba_premultiplied(u8::MAX, u8::MAX, u8::MAX, 10))
-                            resp = resp.corner_radius(1.0).stroke(bevy_egui::egui::Stroke {
-                                width: 1.0,
-                                color: Color32::from_gray(0xaa),
-                            });
+            // todo make function
+            let mut resp = egui::Frame::new();
+            if bundle.len() > 1 {
+                resp = resp.corner_radius(1.0).stroke(bevy_egui::egui::Stroke {
+                    width: 1.0,
+                    color: egui::Color32::BLACK,
+                });
+                if bundle_selected {
+                    resp = resp.corner_radius(1.0).stroke(bevy_egui::egui::Stroke {
+                        width: 1.0,
+                        color: Color32::from_gray(0xaa),
+                    });
+                };
+            };
+
+            resp.show(ui, |ui| {
+                for id in bundle.iter() {
+                    let info = plan.info.get(id).unwrap();
+                    let in_bundle = path_set.is_none_or(|p|p.contains(id)); // Noen means we are not in by_crate mode
+                    let active = world.entity(entity).contains_id(*id);
+
+                    let ticks = TicksInfo::get(&world, entity, *id);
+                    let added = ticks.added(world);
+                    let changed = ticks.changed(world);
+
+                    let reflect = info
+                        .info
+                        .type_id()
+                        .and_then(|id| world.get_reflect(entity, id).ok());
+                    let reflect_component = reflect.and_then(|r| type_registry.get_type_data::<ReflectComponent>(r.reflect_type_info().type_id()));
+                    let is_default = reflect
+                        .and_then(|r| reflect_is_default(r.as_reflect(), type_registry));
+
+                    // TODO visual indication of required_component arrows
+                    ui.horizontal(|ui| {
+                        // change detection
+                        let mut text = match changed {
+                            Some(true)  => "◇",
+                            Some(false) => " ",
+                            None        => match active {
+                                true => "?",
+                                false => " "
+                            },
                         };
-                    };
+                        if added.unwrap_or_default(){
+                            text = "◈";
+                        }
 
-                    resp.show(ui, |ui| {
-                        for id in bundle.iter() {
-                            let info = plan.info.get(id).unwrap();
-                            let in_bundle = path_set.contains(id);
-                            let active = world.entity(entity).contains_id(*id);
+                        let text : RichText = text.into();
+                        ui.label(text.monospace().color(Color32::GRAY));
 
-                            let ticks = TicksInfo::get(&world, entity, *id);
-                            let added = ticks.added(world);
-                            let changed = ticks.changed(world);
+                        // primary label (name)
+                        let mut text = RichText::new(info.short_name());
+                        if ! in_bundle {
+                            text = text.weak();
+                        }
+                        if selected.contains(id) {
+                            text = text.color(Color32::LIGHT_BLUE);
+                        }
+                        if reflect.is_none() {
+                            // not reflect
+                            text = text.italics();
+                        }
+                        if !active {
+                            // missing required component
+                            text = text.strikethrough();
+                        }
 
-                            let reflect = info
-                                .info
-                                .type_id()
-                                .and_then(|id| world.get_reflect(entity, id).ok());
-                            let reflect_component = reflect.and_then(|r| type_registry.get_type_data::<ReflectComponent>(r.reflect_type_info().type_id()));
-                            let is_default = reflect
-                                .and_then(|r| reflect_is_default(r.as_reflect(), type_registry));
+                        if ui
+                            .label(text)
+                            .interact(Sense::click())
+                            .clicked()
+                        {
+                            if !ui.input(|i| i.modifiers.shift) {
+                                selected.clear();
+                                selected.push(*id);
+                            }else{
+                                if let Some(i) = selected.iter().position(|s| s == id){
+                                    selected.remove(i);
+                                }else{
+                                    selected.push(*id);
+                                }
+                            }
+                        }
 
-                            // TODO visual indication of required_component arrows
-                            ui.horizontal(|ui| {
-                                // change detection
-                                let mut text = match changed {
-                                    Some(true)  => "◇",
-                                    Some(false) => " ",
-                                    None        => match active {
-                                        true => "?",
-                                        false => " "
-                                    },
-                                };
-                                if added.unwrap_or_default(){
-                                    text = "◈";
-                                }
+                        // warning sigil
+                        let text = RichText::from("⚠").color(Color32::YELLOW);
+                        if reflect.is_some() && reflect_component.is_none(){
+                            let err = format!("{} has Reflect but not ReflectComponent\nit is likely missing `#![reflect(Component)]` on struct definition", info.short_name() );
+                            ui.label(text.clone()).on_hover_ui( |ui| easy_mark(ui, &err)); // TODO regularized error messages.
+                        }
+                        if info.type_info.is_none(){
+                            let err =
+                                format!("{} has no type registration\nit is likely missing `app.register_type::<TYPE>()` and/or `#![derive(Reflect)]`", info.short_name() );
+                            ui.label(text).on_hover_ui(|ui| easy_mark(ui, &err)); // TODO regularized error messages.
+                        }
 
-                                let text : RichText = text.into();
-                                ui.label(text.monospace().color(Color32::GRAY));
-
-                                // primary label (name)
-                                let mut text = RichText::new(info.short_name());
-                                if ! in_bundle {
-                                    text = text.weak();
-                                }
-                                if selected.contains(id) {
-                                    text = text.color(Color32::LIGHT_BLUE);
-                                }
-                                if reflect.is_none() {
-                                    // not reflect
-                                    text = text.italics();
-                                }
-                                if !active {
-                                    // missing required component
-                                    text = text.strikethrough();
-                                }
-
-                                if ui
-                                    .label(text)
-                                    .interact(Sense::click())
-                                    .clicked()
-                                {
-                                    if !ui.input(|i| i.modifiers.shift) {
-                                        selected.clear();
-                                        selected.push(*id);
-                                    }else{
-                                        if let Some(i) = selected.iter().position(|s| s == id){
-                                            selected.remove(i);
-                                        }else{
-                                            selected.push(*id);
-                                        }
-                                    }
-                                }
-
-                                // warning sigil
-                                let text = RichText::from("⚠").color(Color32::YELLOW);
-                                if reflect.is_some() && reflect_component.is_none(){
-                                    let err = format!("{} has Reflect but not ReflectComponent\nit is likely missing `#![reflect(Component)]` on struct definition", info.short_name() );
-                                    ui.label(text.clone()).on_hover_ui( |ui| easy_mark(ui, &err)); // TODO regularized error messages.
-                                }
-                                if info.type_info.is_none(){
-                                    let err =
-                                        format!("{} has no type registration\nit is likely missing `app.register_type::<TYPE>()` and/or `#![derive(Reflect)]`", info.short_name() );
-                                    ui.label(text).on_hover_ui(|ui| easy_mark(ui, &err)); // TODO regularized error messages.
-                                }
-
-                                // is_default sigil
-                                match is_default {
-                                    Some(true) => {
-                                        ui.label(RichText::new("D").small_raised().weak());
-                                    }
-                                    Some(false) => {
-                                        // ui.label("not default");
-                                    }
-                                    None => {}
-                                }
-                            });
+                        // is_default sigil
+                        match is_default {
+                            Some(true) => {
+                                ui.label(RichText::new("D").small_raised().weak());
+                            }
+                            Some(false) => {
+                                // ui.label("not default");
+                            }
+                            None => {}
                         }
                     });
                 }
             });
+        }
+    };
+
+    ui.vertical(|ui| {
+        if use_collapsing {
+            for crate_name in plan.paths() {
+                egui::CollapsingHeader::new(&crate_name).show(ui, |ui| {
+                    draw_path_ui(ui, &crate_name);
+                });
+            }
+        } else {
+            // Non-collapsing variant: only one path, the empty string
+            draw_path_ui(ui, "");
         }
     });
 }
@@ -1014,7 +1037,14 @@ struct ComponentPlan {
 
 impl ComponentPlan {
     fn bundles_for_path(&self, path: &str) -> Option<Vec<ComponentGroup>> {
-        let subset = self.path.get(path)?;
+        let a;
+        let subset = if path == "" {
+            a = self.info.keys().cloned().collect();
+            &a
+        } else {
+            self.path.get(path)?
+        };
+
         let mut ret = HashMap::new();
         let mut seen = HashSet::new();
         for id in subset.iter() {

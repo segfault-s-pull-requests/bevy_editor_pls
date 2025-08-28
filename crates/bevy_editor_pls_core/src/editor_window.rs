@@ -44,6 +44,8 @@ pub trait EditorWindow: 'static + Send + Sync + dyn_clone::DynClone {
             .to_string()
     }
 
+    fn context_menu(&self, _world: &mut World, _cx: EditorWindowContext, _ui: &mut egui::Ui) {}
+
     fn default_size(&self) -> (f32, f32) {
         (0.0, 0.0)
     }
@@ -94,6 +96,7 @@ pub struct EditorWindowContext<'a> {
     // pub(crate) window_states: &'a mut HashMap<TypeId, EditorWindowState>,
     pub entity: Entity,
     pub internal_state: &'a mut crate::editor::EditorTabs,
+    pub focused: bool,
 }
 impl EditorWindowContext<'_> {
     pub fn get<'a, M: Component>(&self, world: &'a World) -> Option<Ref<'a, M>> {
