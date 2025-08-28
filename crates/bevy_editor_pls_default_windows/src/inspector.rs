@@ -36,6 +36,7 @@ use bevy::utils::default;
 use bevy_editor_pls_core::editor_window::{DefaultLink, EditorWindow, EditorWindowContext, Link};
 use bevy_editor_pls_core::AddEditorWindow;
 use bevy_egui::egui::{lerp, CollapsingHeader, RichText, Sense};
+use bevy_inspector_egui::bevy_inspector::guess_entity_name;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
 use bevy_inspector_egui::egui_utils::easymark::viewer::easy_mark;
 use bevy_inspector_egui::reflect_inspector::{ui_for_value, InspectorUi};
@@ -152,6 +153,7 @@ fn inspector(
                     );
 
                     ui.vertical(|ui| {
+                        ui.label(guess_entity_name(&world, entity)); //TODO cleanup
                         for c in selected.component_selected.iter() {
                             let component =
                                 CompInfo::try_from_world(&world, *c, type_registry, None).unwrap();
@@ -505,6 +507,9 @@ fn new_inspector(
                     let is_default = reflect
                         .and_then(|r| reflect_is_default(r.as_reflect(), type_registry));
 
+                    let is_marker_type = info.info.layout().size() == 0;
+                    let is_relation_like = info.type_info.map(|t|relation_like(t)).flatten();
+
                     // TODO visual indication of required_component arrows
                     ui.horizontal(|ui| {
                         // change detection
@@ -524,7 +529,25 @@ fn new_inspector(
                         ui.label(text.monospace().color(Color32::GRAY));
 
                         // primary label (name)
-                        let mut text = RichText::new(info.short_name());
+                        let mut text = info.short_name();
+                        if is_marker_type {
+                            // text = format!("::{}::", text);
+                            text = format!("@{}", text); // not sure which is better. both feel busy
+                        }
+                        // TODO not happy with this display. It's busy
+                        match is_relation_like {
+                            Some(RelationLike::Relation) => {
+                                text += "->";
+                            }
+                            Some(RelationLike::Option) => {
+                                text += "?>";
+                            }
+                            Some(RelationLike::Target) => {
+                                text += "<-";
+                            }
+                            None => {},
+                        };
+                        let mut text = RichText::new(text);
                         if ! in_bundle {
                             text = text.weak();
                         }
@@ -570,14 +593,16 @@ fn new_inspector(
                         }
 
                         // is_default sigil
-                        match is_default {
-                            Some(true) => {
-                                ui.label(RichText::new("D").small_raised().weak());
+                        if !is_marker_type {
+                            match is_default {
+                                Some(true) => {
+                                    ui.label(RichText::new("D").small_raised().weak());
+                                }
+                                Some(false) => {
+                                    // ui.label("not default");
+                                }
+                                None => {}
                             }
-                            Some(false) => {
-                                // ui.label("not default");
-                            }
-                            None => {}
                         }
                     });
                 }
@@ -944,6 +969,8 @@ fn ui_for_entity_component(
     ui.reset_style();
 }
 
+#[derive(Debug, Clone)]
+
 pub struct CompInfo {
     pub info: ComponentInfo,
     pub type_info: Option<&'static TypeInfo>,
@@ -952,7 +979,7 @@ pub struct CompInfo {
 }
 
 impl CompInfo {
-    fn try_from_world(
+    pub fn try_from_world(
         world: &World,
         c_id: ComponentId,
         registry: &TypeRegistry,
@@ -971,7 +998,7 @@ impl CompInfo {
         Some(Self {
             info,
             type_info,
-            required_by: Default::default(),
+            required_by: Default::default(), // XXX should be None, to force init
             registered,
         })
     }
@@ -1142,20 +1169,46 @@ impl ComponentPlan {
     }
 }
 
-fn relation_like(type_info: &'static TypeInfo) -> Option<String> {
+#[derive(Debug, Clone, Copy)]
+pub enum RelationLike {
+    Relation,
+    Target,
+    Option,
+}
+
+pub fn relation_like(type_info: &'static TypeInfo) -> Option<RelationLike> {
+    fn check_type(typ: &bevy::reflect::Type) -> Option<RelationLike> {
+        if typ.is::<Entity>() {
+            // return Some(format!(".{}", v.name()));
+            return Some(RelationLike::Relation);
+        }
+        if typ.is::<Option<Entity>>() {
+            // return Some(format!(".{}", v.name()));
+            return Some(RelationLike::Option);
+        }
+        // TODO other containers
+        if typ.is::<Vec<Entity>>() {
+            // return Some(format!(".{}", v.name()));
+            return Some(RelationLike::Target);
+        }
+        None
+    }
+
     match type_info.kind() {
         bevy::reflect::ReflectKind::Struct => {
             for v in type_info.as_struct().unwrap().iter() {
-                if v.is::<Entity>() {
-                    return Some(format!(".{}", v.name()));
-                }
+                let r = check_type(v.ty());
+                if r.is_some() {
+                    return r;
+                };
             }
         }
         bevy::reflect::ReflectKind::TupleStruct => {
             for v in type_info.as_tuple_struct().unwrap().iter() {
-                if v.is::<Entity>() {
-                    return Some(format!(".{}", v.index()));
-                }
+                let r = check_type(v.ty());
+                if r.is_some() {
+                    return r;
+                };
             }
         }
         _ => {} // bevy::reflect::ReflectKind::Tuple => todo!(),

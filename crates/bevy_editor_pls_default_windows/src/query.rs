@@ -5,7 +5,7 @@
 // 4. command pallete
 
 use std::{
-    any::TypeId,
+    any::{Any, TypeId},
     cell::RefCell,
     cmp::{max, min},
     f64::consts::E,
@@ -55,6 +55,8 @@ use bevy_inspector_egui::{bevy_inspector::guess_entity_name, egui_utils::layout_
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use transform_gizmo_bevy::{Color32, Pos2};
+
+use crate::inspector::{relation_like, CompInfo};
 
 pub mod window {
     use bevy_editor_pls_core::{
@@ -218,6 +220,29 @@ fn draw_explorer(
         }
     };
 
+    // get relation-like components.
+    // TODO for now just entity, but it should be the bundle
+    let relations = relations_for_entity(
+        world,
+        entity,
+        &registry.read(), /*XXX nothing should be trying to write, but still iffy with &World passed around */
+    );
+
+    // more convienient lookup
+    let mut rel_map: HashMap<Entity, Vec<(ComponentId, bool)>> = HashMap::new();
+    for (comp, rel) in relations.iter() {
+        match rel {
+            PseudoRelation::Relation(e) => {
+                rel_map.entry(*e).or_default().push((comp.info.id(), false));
+            }
+            PseudoRelation::Target(vec) => {
+                for e in vec {
+                    rel_map.entry(*e).or_default().push((comp.info.id(), true));
+                }
+            }
+        }
+    }
+
     // TODO grab this when collecting sibling.
     index = siblings
         .iter()
@@ -338,6 +363,7 @@ fn draw_explorer(
                     false,
                     ui,
                     &mut filtered,
+                    &rel_map, // <-- Pass rel_map here
                 );
                 if resp.inner.is_some() {
                     select = resp.inner;
@@ -349,84 +375,167 @@ fn draw_explorer(
             // draw_bundle(&world, &bundle, entity, ui);
 
             draw_line(ui, &header);
+
+            for (comp, rel) in relations.iter() {
+                if comp.type_info.unwrap().is::<ChildOf>() {
+                    continue;
+                }
+                if let PseudoRelation::Relation(parent) = rel {
+                    if *parent == entity {
+                        continue;
+                    }
+
+                    if parent_chain.iter().any(|b| b.contains(parent)) {
+                        // already in ancestor view
+                        // TODO sigil on bundle
+                        continue;
+                    }
+
+                    let mut b = EntityBundle::new();
+                    b.push(*parent);
+
+                    ui.add_space(10.0);
+                    let header = draw_header(ui, comp.short_name());
+
+                    let mut filtered = false;
+                    let resp = draw_bundle(
+                        &world,
+                        &b,
+                        entity,
+                        selected_c,
+                        &quick_filter,
+                        false,
+                        ui,
+                        &mut filtered,
+                        &rel_map, // <-- Pass rel_map here
+                    );
+                    if resp.inner.is_some() {
+                        select = resp.inner;
+                    }
+
+                    draw_line(ui, &header);
+                }
+            }
         });
 
-        let mut ui_for = |ui: &mut Ui, siblings: &Vec<SmallVec<[Entity; 4]>>| {
-            // TODO test
-            ScrollArea::vertical()
-                .id_salt(ui.next_auto_id())
-                .min_scrolled_height(ui.available_height()) // XXX does this work?
-                .show(ui, |ui| {
-                    let mut filter_count = 0;
-                    for b in siblings.iter() {
-                        if b.contains(&entity) {
-                            ui.scroll_to_cursor(Some(bevy_egui::egui::Align::Min));
-                            //XXX borked
-                        }
-
-                        let mut filtered = false;
-                        let resp = draw_bundle(
-                            &world,
-                            b,
-                            entity,
-                            selected_c,
-                            &quick_filter,
-                            true,
-                            ui,
-                            &mut filtered,
-                        );
-                        if resp.inner.is_some() {
-                            select = resp.inner;
-                        }
-
-                        if filtered {
-                            filter_count += 1;
-                        } else if filter_count != 0 {
-                            draw_ellipsis(ui, filter_count, false);
-                            filter_count = 0;
-                        }
+        // NOTE: the need for this and the next closure to both use select makes this ugly and bad
+        // there needs to be a better way. maybe an inline macro
+        let ui_for =
+            |ui: &mut Ui, siblings: &Vec<SmallVec<[Entity; 4]>>, select: &mut Option<Entity>| {
+                // TODO test
+                let mut filter_count = 0;
+                for b in siblings.iter() {
+                    if b.contains(&entity) {
+                        ui.scroll_to_cursor(Some(bevy_egui::egui::Align::Min));
+                        //XXX borked
                     }
-                    if filter_count != 0 {
+
+                    let mut filtered = false;
+                    let resp = draw_bundle(
+                        &world,
+                        b,
+                        entity,
+                        selected_c,
+                        &quick_filter,
+                        true,
+                        ui,
+                        &mut filtered,
+                        &rel_map, // <-- Pass rel_map here
+                    );
+                    if resp.inner.is_some() {
+                        *select = resp.inner;
+                    }
+
+                    if filtered {
+                        filter_count += 1;
+                    } else if filter_count != 0 {
                         draw_ellipsis(ui, filter_count, false);
+                        filter_count = 0;
                     }
-                });
+                }
+                if filter_count != 0 {
+                    draw_ellipsis(ui, filter_count, false);
+                }
+            };
+
+        // UNTESTED
+        let draw_rel = |ui: &mut Ui, select: &mut Option<Entity>| {
+            for (comp, rel) in relations.iter() {
+                if comp.type_info.unwrap().is::<Children>() {
+                    continue;
+                }
+                if let PseudoRelation::Target(children) = rel {
+                    dbg!(comp.short_name());
+                    ui.add_space(10.0);
+                    let header = draw_header(ui, comp.short_name());
+                    let children = children
+                        .iter()
+                        .map(|child| {
+                            let mut b = EntityBundle::new();
+                            b.push(*child);
+                            b
+                        })
+                        .collect();
+
+                    ui_for(ui, &children, select);
+
+                    draw_line(ui, &header);
+                }
+            }
         };
+
+        //out of date thoughts:
+        // draw in order from start. but must included selected before running out of space.
+        // and ideally works synergistically with additional sections below
+        // 1. sections below could reflow to next pane, and side panel when that is out of space
+        // 2. sections below could reflow to tabs
 
         ui.vertical(|ui| {
             ui.set_height(height);
             //TODO abstract to function
             let header = draw_header(ui, "siblings");
 
-            // draw in order from start. but must included selected before running out of space.
-            // and ideally works synergistically with additional sections below
-            // 1. sections below could reflow to next pane, and side panel when that is out of space
-            // 2. sections below could reflow to tabs
-            ui_for(ui, &siblings);
+            ScrollArea::vertical()
+                .id_salt(ui.next_auto_id())
+                .min_scrolled_height(ui.available_height())
+                .show(ui, |ui| {
+                    ui_for(ui, &siblings, &mut select);
+                });
 
             draw_line(ui, &header);
         });
 
+        let mut drawn_rel = false;
         ui.vertical(|ui| {
+            ui.set_height(height);
             let header = draw_header(ui, "children");
-            ui_for(ui, &children_bundled);
-            // for b in children_bundled.iter() {
-            //     let mut filtered = false;
-            //     let resp = draw_bundle(
-            //         &world,
-            //         b,
-            //         entity,
-            //         selected_c,
-            //         &quick_filter,
-            //         true,
-            //         ui,
-            //         &mut filtered,
-            //     );
-            //     if resp.inner.is_some() {
-            //         select = resp.inner;
-            //     }
-            // }
+            ScrollArea::vertical()
+                .id_salt(ui.next_auto_id())
+                .min_scrolled_height(ui.available_height())
+                .show(ui, |ui| {
+                    ui_for(ui, &children_bundled, &mut select);
+                });
+
             draw_line(ui, &header);
+
+            ui.label(ui.available_height().to_string()); //FIXME
+            if ui.available_height() > 0.0 {
+                drawn_rel = true;
+                draw_rel(ui, &mut select);
+            }
         });
+
+        if !drawn_rel {
+            ui.vertical(|ui| {
+                ui.set_height(height);
+                ScrollArea::vertical()
+                    .id_salt(ui.next_auto_id())
+                    .min_scrolled_height(ui.available_height())
+                    .show(ui, |ui| {
+                        draw_rel(ui, &mut select);
+                    });
+            });
+        }
     });
 
     // remember selection for child
@@ -563,6 +672,8 @@ fn draw_explorer(
             ExplorerAction::PrevSibling => {
                 for _ in 0..siblings.len() {
                     let i = (index as isize - 1).rem_euclid(siblings.len() as isize) as usize;
+                    // TODO preserve bundle index
+
                     if let Some(e) = siblings[i].iter().cloned().filter(qq).next() {
                         select = Some(e)
                     }
@@ -573,6 +684,83 @@ fn draw_explorer(
     }
 
     select
+}
+
+#[derive(Debug, Clone)]
+enum PseudoRelation {
+    Relation(Entity),
+    Target(Vec<Entity>),
+    // Option(Option<Entity>), just treat as Relation for now
+}
+
+fn relations_for_entity(
+    world: &mut World,
+    entity: Entity,
+    type_registry: &TypeRegistry,
+) -> Vec<(CompInfo, PseudoRelation)> {
+    let mut ret = Vec::new();
+
+    for c in world.entity(entity).archetype().components() {
+        let Some(info) = CompInfo::try_from_world(&world, c, type_registry, None) else {
+            continue;
+        };
+        let Some(type_info) = info.type_info else {
+            continue;
+        };
+
+        if relation_like(type_info).is_some() {
+            let reflect = world
+                .get_reflect(entity, type_info.type_id())
+                .expect("type_info exists");
+            fn extract_entity_relations(
+                field: &dyn bevy::reflect::PartialReflect,
+                info: &CompInfo,
+                ret: &mut Vec<(CompInfo, PseudoRelation)>,
+            ) {
+                // Check for Entity or Option<Entity>
+                if let Some(entity) = field.try_downcast_ref::<Entity>() {
+                    ret.push((info.clone(), PseudoRelation::Relation(*entity)));
+                } else if let Some(opt_entity) = field.try_downcast_ref::<Option<Entity>>() {
+                    if let Some(entity) = opt_entity {
+                        ret.push((info.clone(), PseudoRelation::Relation(*entity)));
+                    }
+                } else if let Some(vec_entity) = field.try_downcast_ref::<Vec<Entity>>() {
+                    dbg!(info.path_name());
+                    ret.push((info.clone(), PseudoRelation::Target(vec_entity.clone())));
+                }
+                // Add more container checks as needed
+            }
+
+            match reflect.as_partial_reflect().reflect_ref() {
+                bevy::reflect::ReflectRef::Struct(struct_ref) => {
+                    for i in 0..struct_ref.field_len() {
+                        let field = struct_ref.field_at(i).unwrap();
+                        extract_entity_relations(field, &info, &mut ret);
+                    }
+                }
+                bevy::reflect::ReflectRef::TupleStruct(tuple_struct) => {
+                    for i in 0..tuple_struct.field_len() {
+                        let field = tuple_struct.field(i).unwrap();
+                        extract_entity_relations(field, &info, &mut ret);
+                    }
+                }
+                bevy::reflect::ReflectRef::Tuple(tuple_ref) => {
+                    for i in 0..tuple_ref.field_len() {
+                        let field = tuple_ref.field(i).unwrap();
+                        extract_entity_relations(field, &info, &mut ret);
+                    }
+                }
+                bevy::reflect::ReflectRef::Enum(enum_ref) => {
+                    for field in enum_ref.iter_fields() {
+                        extract_entity_relations(field.value(), &info, &mut ret);
+                    }
+                }
+                // Ignore List, Array, Map, Set, Opaque
+                _ => {}
+            }
+        }
+    }
+    ret
 }
 
 #[derive(Debug, Clone, Default)]
@@ -693,10 +881,11 @@ fn draw_bundle(
     entity: &EntityBundle,
     selected: Entity,
     selected_c: &Vec<ComponentId>,
-    quick_filter: &SearchMode, // XXX would be better to batch fetch Name, right? use queries?
+    quick_filter: &SearchMode,
     horizontal: bool,
     ui: &mut Ui,
     filtered_bundle_ret: &mut bool,
+    rel_map: &HashMap<Entity, Vec<(ComponentId, bool)>>, // <-- Add this
 ) -> bevy_egui::egui::InnerResponse<Option<Entity>> {
     let bundle_selected = entity.contains(&selected);
     let mut resp = Frame::new();
@@ -742,30 +931,25 @@ fn draw_bundle(
             for e in entity.iter() {
                 let mut filtered = false;
                 if quick_filter.enabled {
-                    // filtered = quick_filter.filtered(world, *e) && selected != *e; // don't filter selected element
-                    filtered = quick_filter.filtered(world, *e); // actually do filter selected element
+                    filtered = quick_filter.filtered(world, *e);
                     if quick_filter.filter {
                         if filtered {
                             filter_count += 1;
                             continue;
                         } else if filter_count != 0 {
-                            // we skipped some values, draw the ellipsis
                             draw_ellipsis(ui, filter_count, horizontal);
                             filter_count = 0;
-
-                            // yup, this logic unfortionatley interacts.
                             first = false;
                         }
                     }
                 }
 
                 if horizontal && !first {
-                    // ui.label(RichText::from("❱").monospace());
                     ui.label(
                         RichText::from("/")
                             .monospace()
                             .color(Color32::from_white_alpha(0x22)),
-                    ); // TODO CONST colors
+                    );
                 }
                 first = false;
 
@@ -779,8 +963,8 @@ fn draw_bundle(
                     filtered,
                     max_width,
                     ui,
+                    rel_map, // <-- Pass rel_map here
                 ) {
-                    // TODO refactor hacky selection code path
                     select = Some(*e);
                 }
             }
@@ -833,6 +1017,7 @@ fn draw_entity(
     filtered: bool,
     max_width: u16,
     ui: &mut Ui,
+    rel_map: &HashMap<Entity, Vec<(ComponentId, bool)>>, // <-- Add this
 ) -> bool {
     let is_selected = entity == selected;
 
@@ -950,6 +1135,59 @@ fn draw_entity(
                         .color(bevy_egui::egui::Color32::GRAY)
                         .text_style(bevy_egui::egui::TextStyle::Small),
                 );
+            };
+
+            if let Some(a) = rel_map.get(&entity) {
+                // TODO color code.
+                // TODO ignore childof
+                // TODO spacing in bundles
+                // TODO only weaken if selected component is actaully a relation
+                assert!(!a.is_empty());
+
+                let qq = |rel: &(ComponentId, bool)| {
+                    selected_c.is_empty() || selected_c.contains(&rel.0)
+                };
+
+                let is_target = a.iter().cloned().filter(qq).any(|a| a.1);
+                let is_rel = a.iter().cloned().filter(qq).any(|a| !a.1);
+                let text = match (is_target, is_rel) {
+                    // (true, true) => "◑",
+                    // (true, false) => "○",
+                    // (false, true) => "⏺",
+                    _ => "*",
+                };
+
+                let mut text = RichText::new(text);
+
+                if !selected_c.is_empty() {
+                    let is_selected = a.iter().any(qq);
+                    if !is_selected {
+                        text = text.color(text_color.gamma_multiply(0.3));
+                    } else {
+                        text = text.strong(); // still don't know if this does anything
+                    }
+                }
+                text = text.small_raised().monospace();
+                ui.style_mut().interaction.selectable_labels = false; // required for interact(hover).on_hover_ui below to work
+                ui.label(text).on_hover_ui(|ui| {
+                    // XXX doesn't work
+                    ui.vertical(|ui| {
+                        for (c_id, target) in a.iter() {
+                            let info = CompInfo::try_from_world(
+                                world,
+                                *c_id,
+                                &world.resource::<AppTypeRegistry>().clone().read(),
+                                None,
+                            );
+                            ui.label(info.unwrap().short_name()); // TODO unwrap
+                                                                  // TODO link to inspector
+                        }
+                    });
+                });
+            } else {
+                // to avoid layout changes when switching selected, we add a same size blank space
+                let text = RichText::new(" ").small_raised().monospace();
+                ui.label(text);
             };
         });
     });
