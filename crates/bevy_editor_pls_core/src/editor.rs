@@ -291,10 +291,12 @@ impl Editor {
             return;
         }
 
-        let mut tree = std::mem::replace(
-            &mut internal_state.state,
-            egui_dock::DockState::new(Vec::new()),
-        );
+        // TODO don't expose internal_state to tabs at all
+        // let mut tree = std::mem::replace(
+        //     &mut internal_state.state,
+        //     egui_dock::DockState::new(Vec::new()),
+        // );
+        let mut tree = internal_state.state.clone();
 
         egui_dock::DockArea::new(&mut tree)
             .style(egui_dock::Style {
@@ -364,6 +366,7 @@ impl Editor {
                         let cx = EditorWindowContext {
                             entity: Entity::PLACEHOLDER,
                             internal_state: internal_state,
+                            focused: false, //N/A
                         };
                         window.menu_ui(world, cx, ui);
                     }
@@ -408,10 +411,14 @@ impl egui_dock::TabViewer for TabViewer<'_> {
     type Tab = TreeTab;
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        // XXX this doesn;t work because I have to zero/clone internal state to pass it here bc borrow checker.
+        let focused = self.internal_state.state.find_active_focused().is_some_and(|f| f.1.entity == tab.entity);
+
         let cx = EditorWindowContext {
             // window_states: &mut self.window_states,
             entity: tab.entity,
             internal_state: self.internal_state,
+            focused
         };
 
         // design considerations:
@@ -427,9 +434,11 @@ impl egui_dock::TabViewer for TabViewer<'_> {
 
         let t = Instant::now();
         self.editor.window_cache[&tab.entity].ui(self.world, cx, ui);
+
+        // debug code to show time spent drawing ui
         let time = t.elapsed().as_micros() as f32 / 1000.0;
         if time > 0.4 {
-            let text = format!{"⚠ layout: {:.2}ms", time};
+            let text = format!{"⚠ {:.2}ms", time};
 
             let mut debug_ui = ui.new_child(
                 UiBuilder::new()
@@ -437,36 +446,49 @@ impl egui_dock::TabViewer for TabViewer<'_> {
                     .max_rect(ui.max_rect())
                     .layout(egui::Layout::right_to_left(egui::Align::Max)),
             );
-            debug_ui.label(RichText::new(time.to_string()).color(Color32::BLACK).background_color(Color32::RED));
+            debug_ui.label(RichText::new(text).color(Color32::BLACK).background_color(Color32::RED));
         }
     }
 
     fn context_menu(
         &mut self,
         ui: &mut egui::Ui,
-        _tab: &mut Self::Tab,
+        tab: &mut Self::Tab,
         _surface: SurfaceIndex,
         _node: NodeIndex,
     ) {
-        if ui.button("Pop out").clicked() {
-            // TODO
-            // if let TreeTab::CustomWindow(window) = tab {
-            //     let id = internal_state.next_floating_window_id();
-            //     internal_state.floating_windows.push(FloatingWindow {
-            //         window,
-            //         id,
-            //         initial_position: None,
-            //     });
-            // }
-            warn!("unimplemented");
-            ui.close_menu();
-        }
-    }
-
-    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+        // if ui.button("Pop out").clicked() {
+        //     // TODO
+        //     // if let TreeTab::CustomWindow(window) = tab {
+        //     //     let id = internal_state.next_floating_window_id();
+        //     //     internal_state.floating_windows.push(FloatingWindow {
+        //     //         window,
+        //     //         id,
+        //     //         initial_position: None,
+        //     //     });
+        //     // }
+        //     warn!("unimplemented");
+        //     ui.close_menu();
+        // }
+        let focused = self.internal_state.state.find_active_focused().is_some_and(|f| f.1.entity == tab.entity);
         let cx = EditorWindowContext {
             entity: tab.entity,
             internal_state: self.internal_state,
+            focused,
+        };
+
+        self.editor.window_cache[&tab.entity]
+            .context_menu(self.world, cx, ui)
+            .into()
+        
+    }
+
+    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+        let focused = self.internal_state.state.find_active_focused().is_some_and(|f| f.1.entity == tab.entity);
+        let cx = EditorWindowContext {
+            entity: tab.entity,
+            internal_state: self.internal_state,
+            focused,
         };
         self.editor.window_cache[&tab.entity]
             .name(self.world, cx)
@@ -486,6 +508,10 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         self.world.despawn(tab.entity);
         true // ensure ui is NOT called again, as it will panic if it can't find it's entity
              // XXX the documentation lies
+    }
+
+    fn scroll_bars(&self, _tab: &Self::Tab) -> [bool; 2] {
+        [false, false]
     }
 }
 
