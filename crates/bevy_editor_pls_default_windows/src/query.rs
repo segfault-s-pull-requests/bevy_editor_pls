@@ -18,12 +18,12 @@ use std::{
 use avian3d::parry::na;
 use bevy::{
     ecs::{
-        component::{ComponentId, ComponentInfo},
+        component::{self, ComponentId, ComponentInfo},
         observer::TriggerTargets,
-        relationship::Relationship,
+        relationship::{self, Relationship},
         system::{FunctionSystem, SystemId},
     },
-    platform::collections::HashMap,
+    platform::collections::{HashMap, HashSet},
     prelude::*,
     reflect::{TypeRegistry, TypeRegistryArc},
     ui,
@@ -231,6 +231,10 @@ fn draw_explorer(
     // more convienient lookup
     let mut rel_map: HashMap<Entity, Vec<(ComponentId, bool)>> = HashMap::new();
     for (comp, rel) in relations.iter() {
+        if comp.type_info.unwrap().is::<ChildOf>() || comp.type_info.unwrap().is::<Children>() {
+            continue;
+        }
+
         match rel {
             PseudoRelation::Relation(e) => {
                 rel_map.entry(*e).or_default().push((comp.info.id(), false));
@@ -242,6 +246,17 @@ fn draw_explorer(
             }
         }
     }
+
+    // lookup for whether componentid is rel
+    let selected_c: HashMap<ComponentId, CompInfo> = selected_c
+        .iter()
+        .filter_map(|c| {
+            Some((
+                *c,
+                CompInfo::try_from_world(&world, *c, &*registry.read(), None)?,
+            ))
+        })
+        .collect();
 
     // TODO grab this when collecting sibling.
     index = siblings
@@ -358,7 +373,7 @@ fn draw_explorer(
                     &world,
                     b,
                     entity,
-                    selected_c,
+                    &selected_c,
                     &quick_filter,
                     false,
                     ui,
@@ -376,6 +391,50 @@ fn draw_explorer(
 
             draw_line(ui, &header);
 
+            // can't put other parents here because it would cause layout jitter when switching sibling
+        });
+
+        // NOTE: the need for this and the next closure to both use select makes this ugly and bad
+        // there needs to be a better way. maybe an inline macro
+        let ui_for =
+            |ui: &mut Ui, siblings: &Vec<SmallVec<[Entity; 4]>>, select: &mut Option<Entity>| {
+                // TODO test
+                let mut filter_count = 0;
+                for b in siblings.iter() {
+                    if b.contains(&entity) {
+                        ui.scroll_to_cursor(Some(bevy_egui::egui::Align::Min));
+                        //XXX borked
+                    }
+
+                    let mut filtered = false;
+                    let resp = draw_bundle(
+                        &world,
+                        b,
+                        entity,
+                        &selected_c,
+                        &quick_filter,
+                        true,
+                        ui,
+                        &mut filtered,
+                        &rel_map, // <-- Pass rel_map here
+                    );
+                    if resp.inner.is_some() {
+                        *select = resp.inner;
+                    }
+
+                    if filtered {
+                        filter_count += 1;
+                    } else if filter_count != 0 {
+                        draw_ellipsis(ui, filter_count, false);
+                        filter_count = 0;
+                    }
+                }
+                if filter_count != 0 {
+                    draw_ellipsis(ui, filter_count, false);
+                }
+            };
+
+        let draw_rel = |ui: &mut Ui, select: &mut Option<Entity>| {
             for (comp, rel) in relations.iter() {
                 if comp.type_info.unwrap().is::<ChildOf>() {
                     continue;
@@ -402,42 +461,9 @@ fn draw_explorer(
                         &world,
                         &b,
                         entity,
-                        selected_c,
+                        &selected_c,
                         &quick_filter,
                         false,
-                        ui,
-                        &mut filtered,
-                        &rel_map, // <-- Pass rel_map here
-                    );
-                    if resp.inner.is_some() {
-                        select = resp.inner;
-                    }
-
-                    draw_line(ui, &header);
-                }
-            }
-        });
-
-        // NOTE: the need for this and the next closure to both use select makes this ugly and bad
-        // there needs to be a better way. maybe an inline macro
-        let ui_for =
-            |ui: &mut Ui, siblings: &Vec<SmallVec<[Entity; 4]>>, select: &mut Option<Entity>| {
-                // TODO test
-                let mut filter_count = 0;
-                for b in siblings.iter() {
-                    if b.contains(&entity) {
-                        ui.scroll_to_cursor(Some(bevy_egui::egui::Align::Min));
-                        //XXX borked
-                    }
-
-                    let mut filtered = false;
-                    let resp = draw_bundle(
-                        &world,
-                        b,
-                        entity,
-                        selected_c,
-                        &quick_filter,
-                        true,
                         ui,
                         &mut filtered,
                         &rel_map, // <-- Pass rel_map here
@@ -446,29 +472,20 @@ fn draw_explorer(
                         *select = resp.inner;
                     }
 
-                    if filtered {
-                        filter_count += 1;
-                    } else if filter_count != 0 {
-                        draw_ellipsis(ui, filter_count, false);
-                        filter_count = 0;
-                    }
+                    draw_line(ui, &header);
                 }
-                if filter_count != 0 {
-                    draw_ellipsis(ui, filter_count, false);
-                }
-            };
+            }
 
-        // UNTESTED
-        let draw_rel = |ui: &mut Ui, select: &mut Option<Entity>| {
             for (comp, rel) in relations.iter() {
                 if comp.type_info.unwrap().is::<Children>() {
                     continue;
                 }
                 if let PseudoRelation::Target(children) = rel {
-                    dbg!(comp.short_name());
-                    ui.add_space(10.0);
-                    let header = draw_header(ui, comp.short_name());
-                    let children = children
+                    if !children.iter().any(|a| *a != entity) {
+                        continue;
+                    }
+
+                    let children: Vec<_> = children
                         .iter()
                         .map(|child| {
                             let mut b = EntityBundle::new();
@@ -477,6 +494,8 @@ fn draw_explorer(
                         })
                         .collect();
 
+                    ui.add_space(10.0);
+                    let header = draw_header(ui, comp.short_name());
                     ui_for(ui, &children, select);
 
                     draw_line(ui, &header);
@@ -508,17 +527,18 @@ fn draw_explorer(
         let mut drawn_rel = false;
         ui.vertical(|ui| {
             ui.set_height(height);
-            let header = draw_header(ui, "children");
-            ScrollArea::vertical()
-                .id_salt(ui.next_auto_id())
-                .min_scrolled_height(ui.available_height())
-                .show(ui, |ui| {
-                    ui_for(ui, &children_bundled, &mut select);
-                });
+            if !children_bundled.is_empty() {
+                let header = draw_header(ui, "children");
+                ScrollArea::vertical()
+                    .id_salt(ui.next_auto_id())
+                    .min_scrolled_height(ui.available_height())
+                    .show(ui, |ui| {
+                        ui_for(ui, &children_bundled, &mut select);
+                    });
+                draw_line(ui, &header);
+            }
 
-            draw_line(ui, &header);
-
-            ui.label(ui.available_height().to_string()); //FIXME
+            // ui.label(ui.available_height().to_string()); //FIXME
             if ui.available_height() > 0.0 {
                 drawn_rel = true;
                 draw_rel(ui, &mut select);
@@ -725,7 +745,7 @@ fn relations_for_entity(
                         ret.push((info.clone(), PseudoRelation::Relation(*entity)));
                     }
                 } else if let Some(vec_entity) = field.try_downcast_ref::<Vec<Entity>>() {
-                    dbg!(info.path_name());
+                    // dbg!(info.short_name());
                     ret.push((info.clone(), PseudoRelation::Target(vec_entity.clone())));
                 }
                 // Add more container checks as needed
@@ -880,7 +900,7 @@ fn draw_bundle(
     world: &World,
     entity: &EntityBundle,
     selected: Entity,
-    selected_c: &Vec<ComponentId>,
+    selected_c: &HashMap<ComponentId, CompInfo>,
     quick_filter: &SearchMode,
     horizontal: bool,
     ui: &mut Ui,
@@ -1012,7 +1032,7 @@ fn draw_entity(
     world: &World,
     entity: Entity,
     selected: Entity,
-    selected_c: &Vec<ComponentId>,
+    selected_c: &HashMap<ComponentId, CompInfo>,
     quick_filter: &SearchMode,
     filtered: bool,
     max_width: u16,
@@ -1056,7 +1076,7 @@ fn draw_entity(
 
             if !selected_c.is_empty() {
                 let e = world.entity(entity);
-                if selected_c.iter().all(|c| !e.contains_id(*c)) {
+                if selected_c.keys().all(|c| !e.contains_id(*c)) {
                     //name_text = name_text.weak(); // doesn't seem to do anything.
                     if !is_selected {
                         name_text = bevy_egui::egui::RichText::new(&name)
@@ -1137,29 +1157,36 @@ fn draw_entity(
                 );
             };
 
-            if let Some(a) = rel_map.get(&entity) {
+            let related = rel_map.get(&entity);
+            if related.is_some() && selected != entity
+            /*no self relations*/
+            {
+                let a = related.unwrap();
                 // TODO color code.
-                // TODO ignore childof
                 // TODO spacing in bundles
-                // TODO only weaken if selected component is actaully a relation
                 assert!(!a.is_empty());
 
-                let qq = |rel: &(ComponentId, bool)| {
-                    selected_c.is_empty() || selected_c.contains(&rel.0)
-                };
+                let selected_has_rel = selected_c.iter().any(|c| c.1.relation_like.is_some());
+                let qq =
+                    |rel: &(ComponentId, bool)| selected_has_rel || selected_c.contains_key(&rel.0);
 
-                let is_target = a.iter().cloned().filter(qq).any(|a| a.1);
-                let is_rel = a.iter().cloned().filter(qq).any(|a| !a.1);
+                let mut is_target = a.iter().cloned().filter(qq).any(|a| a.1);
+                let mut is_rel = a.iter().cloned().filter(qq).any(|a| !a.1);
+                if !is_target && !is_rel {
+                    // if neither match selected, draw all arrows
+                    is_target = a.iter().cloned().any(|a| a.1);
+                    is_rel = a.iter().cloned().any(|a| !a.1);
+                }
                 let text = match (is_target, is_rel) {
-                    // (true, true) => "◑",
-                    // (true, false) => "○",
-                    // (false, true) => "⏺",
+                    (true, true) => "↔",
+                    (false, true) => "←",
+                    (true, false) => "→",
                     _ => "*",
                 };
 
                 let mut text = RichText::new(text);
 
-                if !selected_c.is_empty() {
+                if selected_has_rel {
                     let is_selected = a.iter().any(qq);
                     if !is_selected {
                         text = text.color(text_color.gamma_multiply(0.3));

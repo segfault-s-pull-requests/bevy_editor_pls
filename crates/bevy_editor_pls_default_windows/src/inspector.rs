@@ -976,6 +976,7 @@ pub struct CompInfo {
     pub type_info: Option<&'static TypeInfo>,
     pub registered: bool,
     pub required_by: SmallVec<[ComponentId; 4]>,
+    pub relation_like: Option<RelationLike>,
 }
 
 impl CompInfo {
@@ -995,11 +996,18 @@ impl CompInfo {
         //     world.get_reflect(entity, c_id).unwrap();
         // }
 
+        let relation_like = if let Some(type_info) = type_info {
+            relation_like(type_info)
+        } else {
+            None
+        };
+
         Some(Self {
             info,
             type_info,
             required_by: Default::default(), // XXX should be None, to force init
             registered,
+            relation_like,
         })
     }
 
