@@ -20,7 +20,7 @@ use bevy::ecs::component::{Component, ComponentId, ComponentInfo, ComponentTicks
 use bevy::ecs::entity::Entity;
 use bevy::ecs::reflect::ReflectComponent;
 use bevy::ecs::resource::Resource;
-use bevy::ecs::world::DynamicComponentFetch;
+use bevy::ecs::world::{CommandQueue, DynamicComponentFetch};
 use bevy::log::error_once;
 use bevy::log::tracing_subscriber::fmt::format;
 use bevy::log::tracing_subscriber::registry;
@@ -747,11 +747,13 @@ fn ui_for_entity_component(
     let mut binding = RestrictedWorldView::from(&mut world);
     let (mut component_view, split_world) =
         binding.split_off_component((entity, type_info.type_id()));
+
+    let mut queue = CommandQueue::default();
     let mut cx = bevy_inspector_egui::reflect_inspector::Context {
         world: Some(split_world),
         #[allow(clippy::needless_option_as_deref)]
         // queue: queue.as_deref_mut(),
-        queue: None, //TODO, this break AnimationContext buttons
+        queue: Some(&mut queue), //TODO, this break AnimationContext buttons
         entity: Some(entity)
     };
 
@@ -957,6 +959,9 @@ fn ui_for_entity_component(
             }
         });
     });
+
+    // apply defered commands
+    queue.apply(world);
 
     // if let Some(queue) = queue.as_mut() {
     //     response.header_response.context_menu(|ui| {
