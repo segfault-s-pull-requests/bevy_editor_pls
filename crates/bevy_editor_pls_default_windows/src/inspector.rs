@@ -59,6 +59,7 @@ pub enum InspectorSelection {
 
 #[derive(Debug, Clone, Default, Component, Reflect, PartialEq)]
 pub struct InspectorState {
+    // TODO move into seperate thing.
     #[reflect(ignore)]
     pub selected: InspectorSelection,
     pub component_selected: Vec<ComponentId>,

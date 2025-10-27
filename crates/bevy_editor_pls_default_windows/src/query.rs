@@ -25,7 +25,7 @@ use bevy::{
     },
     platform::collections::{HashMap, HashSet},
     prelude::*,
-    reflect::{TypeRegistry, TypeRegistryArc},
+    reflect::{self, TypeRegistry, TypeRegistryArc},
     ui,
 };
 use bevy_egui::egui::{
@@ -58,6 +58,12 @@ use transform_gizmo_bevy::{Color32, Pos2};
 
 use crate::inspector::{relation_like, CompInfo};
 
+#[derive(Debug, Default, Component, Clone, Reflect)]
+#[reflect(Component)]
+pub struct NavState {
+    horizontal: bool,
+}
+
 pub mod window {
     use bevy_editor_pls_core::{
         editor_window::{EditorWindow, EditorWindowContext},
@@ -67,9 +73,11 @@ pub mod window {
     use bevy_egui::egui;
     use bevy_inspector_egui::bevy_inspector::hierarchy::Hierarchy;
 
-    use crate::{hierarchy::HierarchyState, inspector::InspectorState, query::draw_explorer};
+    use crate::{hierarchy::HierarchyState, inspector::InspectorState, query::{draw_explorer, NavState}};
 
-    #[derive(Debug, Default, Component, Clone, Copy)]
+    #[derive(Debug, Default, Component, Clone, Copy, Reflect)]
+    #[require(NavState)]
+    #[reflect(Component)]
     pub struct NavWindow;
     impl EditorWindow for NavWindow {
         fn ui(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
@@ -93,6 +101,8 @@ pub mod window {
 
             let focused = cx.focused;
 
+            let mut state = cx.get::<NavState>(world).unwrap().clone(); // TODO don't clone
+
             // default selection.
             // these don't persist. meaning that if the scene loads after the editor is open it overrules the second fallback.
             // once user actaully navigates / selects a entity then these won't run.
@@ -114,7 +124,7 @@ pub mod window {
             }
 
             if let Some(e) = entities.iter().next() {
-                if let Some(e) = draw_explorer(world, e, ui, &selected_c, focused) {
+                if let Some(e) = draw_explorer(world, e, ui, &selected_c, focused, state) {
                     cx.get_mut::<HierarchyState>(world)
                         .unwrap()
                         .selected
@@ -123,6 +133,16 @@ pub mod window {
             };
 
             // let add_window_state = cx.state::<AddWindow>();
+        }
+
+        fn context_menu(&self, world: &mut World, cx: EditorWindowContext, ui: &mut egui::Ui) {
+            let type_registry = world.resource::<AppTypeRegistry>().0.clone();
+            let type_registry = type_registry.read();
+            let mut state = cx.get::<NavState>(world).unwrap().clone(); // TODO don't clone
+
+            bevy_inspector_egui::reflect_inspector::ui_for_value(state.as_partial_reflect_mut(), ui, &type_registry);
+
+            *cx.get_mut::<NavState>(world).unwrap() = state;
         }
     }
 
@@ -172,6 +192,7 @@ fn draw_explorer(
     ui: &mut Ui,
     selected_c: &Vec<ComponentId>,
     focused: bool,
+    state: NavState
 ) -> Option<Entity> {
     let registry = world.resource::<AppTypeRegistry>().clone();
 
@@ -375,7 +396,7 @@ fn draw_explorer(
                     entity,
                     &selected_c,
                     &quick_filter,
-                    false,
+                    state.clone(),
                     ui,
                     &mut filtered,
                     &rel_map, // <-- Pass rel_map here
@@ -413,7 +434,7 @@ fn draw_explorer(
                         entity,
                         &selected_c,
                         &quick_filter,
-                        true,
+                        state.clone(),
                         ui,
                         &mut filtered,
                         &rel_map, // <-- Pass rel_map here
@@ -463,7 +484,7 @@ fn draw_explorer(
                         entity,
                         &selected_c,
                         &quick_filter,
-                        false,
+                        state.clone(),
                         ui,
                         &mut filtered,
                         &rel_map, // <-- Pass rel_map here
@@ -902,7 +923,7 @@ fn draw_bundle(
     selected: Entity,
     selected_c: &HashMap<ComponentId, CompInfo>,
     quick_filter: &SearchMode,
-    horizontal: bool,
+    state: NavState,
     ui: &mut Ui,
     filtered_bundle_ret: &mut bool,
     rel_map: &HashMap<Entity, Vec<(ComponentId, bool)>>, // <-- Add this
@@ -915,12 +936,12 @@ fn draw_bundle(
         false => Color32::BLACK,
     };
 
-    let max_width = match horizontal {
+    let max_width = match state.horizontal {
         true => 15,
         false => 0, // unlimited
     };
 
-    if entity.len() > 1 && !horizontal {
+    if entity.len() > 1 && !state.horizontal {
         resp = resp
             .corner_radius(1.0)
             .stroke(bevy_egui::egui::Stroke { width: 1.0, color });
@@ -937,7 +958,7 @@ fn draw_bundle(
         //TODO better prop
         let mut select = None;
 
-        let layout = match horizontal {
+        let layout = match state.horizontal {
             false => Layout::top_down(bevy_egui::egui::Align::Min),
             true => Layout::left_to_right(bevy_egui::egui::Align::Min),
         };
@@ -957,14 +978,14 @@ fn draw_bundle(
                             filter_count += 1;
                             continue;
                         } else if filter_count != 0 {
-                            draw_ellipsis(ui, filter_count, horizontal);
+                            draw_ellipsis(ui, filter_count, state.horizontal);
                             filter_count = 0;
                             first = false;
                         }
                     }
                 }
 
-                if horizontal && !first {
+                if state.horizontal && !first {
                     ui.label(
                         RichText::from("/")
                             .monospace()
@@ -989,7 +1010,7 @@ fn draw_bundle(
                 }
             }
             if filter_count != 0 && drawn_one {
-                draw_ellipsis(ui, filter_count, horizontal);
+                draw_ellipsis(ui, filter_count, state.horizontal);
             }
             *filtered_bundle_ret = !drawn_one;
         });
@@ -1075,15 +1096,16 @@ fn draw_entity(
             };
 
             if !selected_c.is_empty() {
-                let e = world.entity(entity);
-                if selected_c.keys().all(|c| !e.contains_id(*c)) {
-                    //name_text = name_text.weak(); // doesn't seem to do anything.
-                    if !is_selected {
-                        name_text = bevy_egui::egui::RichText::new(&name)
-                            .color(text_color.gamma_multiply(0.3))
+                if let Ok(e) = world.get_entity(entity) {
+                    if selected_c.keys().all(|c| !e.contains_id(*c)) {
+                        //name_text = name_text.weak(); // doesn't seem to do anything.
+                        if !is_selected {
+                            name_text = bevy_egui::egui::RichText::new(&name)
+                                .color(text_color.gamma_multiply(0.3))
+                        }
+                    } else {
+                        name_text = name_text.strong();
                     }
-                } else {
-                    name_text = name_text.strong();
                 }
             }
 
