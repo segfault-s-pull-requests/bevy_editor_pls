@@ -47,6 +47,7 @@ bevy_mod_outline = "*"
 smallvec = "1.15.1"
 regex_static = "0.1.1"
 derive-cmp-ops = "0.1.0"
+egui_plot = "=0.31.0"
 # cargo patch should disregard semver
 # obviously
 # bastards

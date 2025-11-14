@@ -13,6 +13,7 @@ pub mod logging;
 pub mod query;
 pub mod renderer;
 pub mod resources;
+pub mod performance;
 
 pub mod utils {
     pub mod log_plugin;
@@ -34,6 +35,8 @@ pub mod prelude {
     pub use crate::renderer::RendererWindow;
     pub use crate::resources::ResourcesWindow;
     pub use crate::scenes::SceneWindow;
+
+    pub use crate::performance::PerfWindow;
 
     #[cfg(feature = "bevy_metrics_dashboard")]
     pub use crate::metrics::MetricsWindow;

@@ -116,6 +116,7 @@ impl Plugin for EditorPlugin {
         app.add_plugins(DebugSettingsWindow);
         // app.add_plugins(AddWindow);
         app.add_plugins(DiagnosticsWindow);
+        app.add_plugins(PerfWindow);
         app.add_plugins(RendererWindow);
         app.add_plugins(CameraWindow::default()); //TODO rework this, either with CameraWindowPlugin or by moving target camera into different component
         app.add_plugins(ResourcesWindow);
@@ -150,7 +151,7 @@ pub fn spawn_default_windows(mut commands: Commands, mut tree: ResMut<EditorTabs
         .spawn((
             bevy_editor_pls_default_windows::cameras::default_editor_cam(),
             CameraWindow::default(),
-            ChildOf(parent),
+            ChildOf(parent),// TODO make part_of
         ))
         .id();
     let c2 = commands

@@ -165,9 +165,15 @@ fn get_bundle(
     let entity = entity.0;
     ret.push(entity);
     for e in parent.iter_ancestors(entity) {
-        if children.get(e).unwrap().len() == 1 {
-            ret.insert(0, e);
+        if let Ok(children) = children.get(e) {
+            if children.len() == 1 {
+                ret.insert(0, e);
+            }else{
+                break;
+            }
         } else {
+            dbg!(e);
+            // likely despawned
             break;
         }
     }
@@ -176,6 +182,13 @@ fn get_bundle(
     while let Ok(ls) = children.get(current) {
         if ls.len() == 1 {
             current = ls[0];
+            if parent.get(current).is_err(){
+                //likely despawned
+                // TODO fix when this runs
+                dbg!(current);
+                break;
+            }
+
             ret.push(current);
         } else {
             break;
@@ -211,7 +224,9 @@ fn draw_explorer(
         .unwrap()
         .0; //TODO cleaner
 
-    // get first parent and then children
+    // get first parent and then children\
+
+    // XXX how does this error, get_bundle should not be able to return despawned entities
     let parent = world.entity(bundle[0]).get::<ChildOf>().map(|a| a.0);
     let mut index = 0;
     let siblings = match parent {
